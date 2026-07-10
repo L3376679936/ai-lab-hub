@@ -8,6 +8,7 @@ import com.ailab.core.util.JwtUtils;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,6 +27,9 @@ public class AuthController {
     @Autowired
     private SysUserRepository sysUserRepository;
 
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody LoginRequest loginRequest) {
         String username = loginRequest.getUsername();
@@ -35,10 +39,9 @@ public class AuthController {
             throw new BusinessException("用户名和密码不能为空");
         }
 
-        // 尝试从数据库校验
         boolean authSuccess = false;
         String nickname = "管理员";
-        
+
         try {
             Optional<SysUser> userOpt = sysUserRepository.findByUsername(username);
             if (userOpt.isPresent()) {
@@ -46,22 +49,17 @@ public class AuthController {
                 if (user.getStatus() != 1) {
                     throw new BusinessException("该账户已被禁用");
                 }
-                if (user.getPassword().equals(password)) {
+                // 使用 BCrypt 安全校验密码（支持哈希存储，不再明文比对）
+                if (passwordEncoder.matches(password, user.getPassword())) {
                     authSuccess = true;
                     nickname = user.getNickname();
                 }
-            } else {
-                // 如果数据库没找到，使用默认兜底验证 (admin/admin123)
-                if ("admin".equals(username) && "admin123".equals(password)) {
-                    authSuccess = true;
-                }
             }
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("查询数据库登录失败，尝试使用默认兜底账号(admin/admin123)进行验证。错误原因: {}", e.getMessage());
-            // 如果数据库连不上，直接使用默认账号兜底，以保证单机非 MySQL 容器测试顺利跑通
-            if ("admin".equals(username) && "admin123".equals(password)) {
-                authSuccess = true;
-            }
+            log.error("登录查询异常: {}", e.getMessage());
+            throw new BusinessException("登录服务暂时不可用，请稍后重试");
         }
 
         if (!authSuccess) {
