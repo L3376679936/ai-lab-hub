@@ -115,27 +115,48 @@ public class WordExportEngine {
                     }
                 }
 
-                // --- 3.4 物理插入可能关联的拓扑图图片 (如果前端关联了本地临时 imageId) ---
-                if (fields != null && fields.containsKey("imageId")) {
-                    String imageId = (String) fields.get("imageId");
-                    if (imageId != null && !imageId.trim().isEmpty()) {
-                        String imagePath = tempDir + "/uploads/" + imageId;
-                        if (Files.exists(Paths.get(imagePath))) {
-                            log.info("POI 检测到接口关联图片，执行物理插入. Path: {}", imagePath);
+                // --- 3.4 物理插入可能关联的拓扑图图片 (如果前端关联了本地临时 imageId 或 Base64 内存图片) ---
+                if (fields != null && (fields.containsKey("imageId") || fields.containsKey("imageUrl"))) {
+                    String imageUrl = (String) fields.get("imageUrl");
+                    if (imageUrl != null && imageUrl.startsWith("data:image/")) {
+                        try {
+                            log.info("POI 检测到前端 Base64 内存图片，执行流式解码物理插入...");
                             XWPFParagraph imgPara = doc.createParagraph();
                             imgPara.setAlignment(ParagraphAlignment.CENTER);
                             XWPFRun imgRun = imgPara.createRun();
                             imgRun.setText("图 1. 接口拓扑/业务时序示意图：");
                             imgRun.addBreak();
 
-                            try (InputStream imgStream = new FileInputStream(imagePath)) {
-                                // 限制宽度为 450 像素，高度按比例适配
-                                imgRun.addPicture(imgStream, XWPFDocument.PICTURE_TYPE_PNG, imageId, 
+                            String base64Content = imageUrl.substring(imageUrl.indexOf(",") + 1);
+                            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Content);
+                            try (InputStream imgStream = new java.io.ByteArrayInputStream(imageBytes)) {
+                                imgRun.addPicture(imgStream, XWPFDocument.PICTURE_TYPE_PNG, "pasted_image.png", 
                                         Units.toEMU(420), Units.toEMU(260));
-                            } catch (Exception imgEx) {
-                                log.error("POI 插入图片失败: {}", imgEx.getMessage());
                             }
                             doc.createParagraph(); // 间距
+                        } catch (Exception imgEx) {
+                            log.error("POI 插入 Base64 图片失败: {}", imgEx.getMessage());
+                        }
+                    } else {
+                        String imageId = (String) fields.get("imageId");
+                        if (imageId != null && !imageId.trim().isEmpty()) {
+                            String imagePath = tempDir + "/uploads/" + imageId;
+                            if (Files.exists(Paths.get(imagePath))) {
+                                log.info("POI 检测到接口关联图片，执行物理插入. Path: {}", imagePath);
+                                XWPFParagraph imgPara = doc.createParagraph();
+                                imgPara.setAlignment(ParagraphAlignment.CENTER);
+                                XWPFRun imgRun = imgPara.createRun();
+                                imgRun.setText("图 1. 接口拓扑/业务时序示意图：");
+                                imgRun.addBreak();
+
+                                try (InputStream imgStream = new FileInputStream(imagePath)) {
+                                    imgRun.addPicture(imgStream, XWPFDocument.PICTURE_TYPE_PNG, imageId, 
+                                            Units.toEMU(420), Units.toEMU(260));
+                                } catch (Exception imgEx) {
+                                    log.error("POI 插入图片失败: {}", imgEx.getMessage());
+                                }
+                                doc.createParagraph(); // 间距
+                            }
                         }
                     }
                 }

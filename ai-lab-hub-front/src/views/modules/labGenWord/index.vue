@@ -52,7 +52,7 @@
                 name="file"
                 :multiple="false"
                 action="/ai-lab-hub-api/word/analyze-template"
-                :headers="uploadHeaders"
+                :headers="templateUploadHeaders"
                 @change="handleTemplateUploadChange"
               >
                 <p class="ant-upload-drag-icon">
@@ -247,12 +247,12 @@ const config = reactive({
   material: ''
 });
 
-// 全局暂存图片
-const globalImageId = ref(null);
-const globalImageUrl = ref(null);
+// 图片仅在前端内存中以 Base64 存储，不做实时上传
+// 粘贴时存此字段用于预览，导出时随接口数据一同打包发给后端
+const globalImageBase64 = ref(null);
 
-// JWT 鉴权统一请求头适配，解决后端拦截器未登录拦截报错的问题
-const uploadHeaders = {
+// 模板上传拖拽器所需的鉴权请求头
+const templateUploadHeaders = {
   Authorization: 'Bearer ' + localStorage.getItem('token')
 };
 
@@ -314,70 +314,46 @@ const handleTemplateUploadChange = (info) => {
   }
 };
 
-// 2. 粘贴事件监听 (支持全局 Ctrl+V 直接粘贴上传系统截图)
-const handlePaste = async (event) => {
+// 2. 粘贴事件监听：只在前端内存中以 Base64 存图并回显，不做任何实时上传
+const handlePaste = (event) => {
   const items = (event.clipboardData || window.clipboardData).items;
   for (let i = 0; i < items.length; i++) {
     if (items[i].type.indexOf('image') !== -1) {
       const blob = items[i].getAsFile();
-      event.preventDefault(); // 阻断默认粘贴
+      event.preventDefault();
 
-      message.loading({ content: '检测到屏幕截图，正在智能物理上传中...', key: 'paste-img', duration: 0 });
-
-      const formData = new FormData();
-      formData.append('file', blob, 'pasted_screenshot.png');
-
-      try {
-        const res = await fetch('/ai-lab-hub-api/word/upload-image', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + localStorage.getItem('token')
-          },
-          body: formData
-        });
-        const result = await res.json();
-        if (result.code === 200) {
-          message.success({ content: '截图粘贴并暂存成功！已自动关联当前区块。', key: 'paste-img', duration: 2 });
-          
-          // 如果列表已有接口，直接绑在当前接口上
-          if (apiList.value.length > 0) {
-            const curApi = apiList.value[activeApiIndex.value];
-            curApi.fields.imageId = result.data.imageId;
-            curApi.fields.imageUrl = result.data.url;
-          } else {
-            // 如果还未提取，先暂存在全局
-            globalImageId.value = result.data.imageId;
-            globalImageUrl.value = result.data.url;
-          }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target.result; // data:image/png;base64,xxx...
+        // 如果右侧已有解析出的接口，绑在当前激活项上；否则存全局
+        if (apiList.value.length > 0) {
+          apiList.value[activeApiIndex.value].fields.imageUrl = base64;
         } else {
-          message.error({ content: '图片上传失败: ' + result.message, key: 'paste-img' });
+          globalImageBase64.value = base64;
         }
-      } catch (err) {
-        message.error({ content: '网络错误，无法将图片粘贴同步至服务器', key: 'paste-img' });
-      }
+        message.success('截图已就绪，点击「导出」时将随数据一同提交！');
+      };
+      reader.readAsDataURL(blob);
     }
   }
 };
 
-// 获取当前接口所绑定的图片地址
+// 获取当前接口所绑定的图片（Base64 格式，仅前端内存）
 const getCurApiImage = () => {
   if (apiList.value.length > 0) {
     return apiList.value[activeApiIndex.value]?.fields?.imageUrl || null;
   }
-  return globalImageUrl.value;
+  return globalImageBase64.value;
 };
 
 // 移除当前接口绑定的图片
 const removeCurApiImage = () => {
   if (apiList.value.length > 0) {
-    const curApi = apiList.value[activeApiIndex.value];
-    curApi.fields.imageId = null;
-    curApi.fields.imageUrl = null;
+    apiList.value[activeApiIndex.value].fields.imageUrl = null;
   } else {
-    globalImageId.value = null;
-    globalImageUrl.value = null;
+    globalImageBase64.value = null;
   }
-  message.info('图片关联已解除');
+  message.info('图片已清除');
 };
 
 // 3. 开始智能解析大纲
@@ -408,14 +384,12 @@ const startParsing = async () => {
       const parsedData = JSON.parse(res.data);
       
       // 遍历接口补全可能缺失的 data-structure
-      apiList.value = parsedData.map(item => {
-        // 确保 fields 对象存在
+      apiList.value = parsedData.map((item, idx) => {
         if (!item.fields) item.fields = {};
-        
-        // 绑定先前暂存的全局图片（若有）
-        if (globalImageId.value && !item.fields.imageId) {
-          item.fields.imageId = globalImageId.value;
-          item.fields.imageUrl = globalImageUrl.value;
+
+        // 将解析前粘贴的全局内存图片绑给第一个接口
+        if (idx === 0 && globalImageBase64.value && !item.fields.imageUrl) {
+          item.fields.imageUrl = globalImageBase64.value;
         }
 
         // 确保 tables 字典里的表格完全被声明
@@ -435,9 +409,8 @@ const startParsing = async () => {
         return item;
       });
 
-      // 消费掉全局图片
-      globalImageId.value = null;
-      globalImageUrl.value = null;
+      // 消费掉全局暂存图片
+      globalImageBase64.value = null;
 
       activeApiIndex.value = 0;
       message.success('AI 智能分析大纲抽取完成！已为您自动生成对齐数据。');
