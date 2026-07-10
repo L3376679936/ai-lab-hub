@@ -81,4 +81,68 @@ public class AiClient {
             throw new RuntimeException("大模型网关调用失败: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * 发起同步 AI 对话请求 (OpenAI 兼容格式)
+     *
+     * @param systemPrompt 系统提示词 (可为 null)
+     * @param userPrompt   用户提示词
+     * @param toolCode     工具编码
+     * @return 大模型返回的文本内容
+     */
+    @SuppressWarnings("unchecked")
+    public String blockingChat(String systemPrompt, String userPrompt, String toolCode) {
+        String apiKey = aiGatewayService.getApiKey(toolCode);
+        String endpoint = aiGatewayService.getEndpoint(toolCode);
+        String model = aiGatewayService.getModel(toolCode);
+
+        String url = endpoint.endsWith("/") ? endpoint + "v1/chat/completions" : endpoint + "/v1/chat/completions";
+        log.info("准备发起同步大模型调用. Endpoint: {}, Model: {}", url, model);
+
+        try {
+            Map<String, Object> requestMap = new HashMap<>();
+            requestMap.put("model", model);
+            requestMap.put("stream", false);
+
+            List<Map<String, String>> messages = new ArrayList<>();
+            if (systemPrompt != null && !systemPrompt.trim().isEmpty()) {
+                Map<String, String> sysMessage = new HashMap<>();
+                sysMessage.put("role", "system");
+                sysMessage.put("content", systemPrompt);
+                messages.add(sysMessage);
+            }
+            Map<String, String> userMessage = new HashMap<>();
+            userMessage.put("role", "user");
+            userMessage.put("content", userPrompt);
+            messages.add(userMessage);
+            requestMap.put("messages", messages);
+
+            String requestJson = objectMapper.writeValueAsString(requestMap);
+
+            Request request = new Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer " + apiKey)
+                    .post(RequestBody.create(requestJson, JSON_MEDIA_TYPE))
+                    .build();
+
+            try (Response response = okHttpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    throw new RuntimeException("大模型服务响应失败, HTTP code: " + response.code());
+                }
+                String body = response.body().string();
+                Map<String, Object> responseMap = objectMapper.readValue(body, Map.class);
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+                    if (message != null) {
+                        return (String) message.get("content");
+                    }
+                }
+                throw new RuntimeException("大模型返回体中未包含有效文本内容");
+            }
+        } catch (Exception e) {
+            log.error("大模型同步调用异常: {}", e.getMessage());
+            throw new RuntimeException("大模型网关调用失败: " + e.getMessage(), e);
+        }
+    }
 }

@@ -57,6 +57,18 @@
                 <version>${jjwt.version}</version>
             </dependency>
 
+            <!-- Apache POI Office 自动化 -->
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi</artifactId>
+                <version>5.2.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>5.2.2</version>
+            </dependency>
+
             <!-- MySQL Driver (显式管理以防 Spring Boot 2.x BOM 解析失败) -->
             <dependency>
                 <groupId>mysql</groupId>

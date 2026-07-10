@@ -17,5 +17,22 @@
             <groupId>com.ailab</groupId>
             <artifactId>ai-lab-hub-core</artifactId>
         </dependency>
+
+        <!-- Apache POI Office 自动化 -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <!-- Lombok 编译支持 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>

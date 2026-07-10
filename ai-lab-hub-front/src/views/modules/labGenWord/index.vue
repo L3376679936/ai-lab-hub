@@ -1,5 +1,5 @@
 <template>
-  <div class="tool-page">
+  <div class="tool-page" @paste="handlePaste">
     <!-- 返回头部 -->
     <div class="page-header">
       <div class="header-top-row">
@@ -8,19 +8,18 @@
           <span>返回工具箱列表</span>
         </router-link>
         
-        <!-- 核心：界面方案热切换控制器 -->
+        <!-- 界面方案热切换控制器（保留选型） -->
         <div class="layout-switcher">
           <span class="switcher-label">💡 界面演示切换器：</span>
           <a-radio-group v-model:value="currentLayout" button-style="solid" size="small">
-            <a-radio-button value="A">方案 A：左右 Bento 看板</a-radio-button>
-            <a-radio-button value="B">方案 B：分步步骤向导</a-radio-button>
+            <a-radio-button value="A">方案 A：左右 Bento 看板 (已选定)</a-radio-button>
           </a-radio-group>
         </div>
       </div>
       
       <div class="page-title">
         <h2>Word 自动生成工作流</h2>
-        <span class="subtitle">针对单一接口设计说明场景，一键解析代码/Swagger并物理填充至指定规范Word模板</span>
+        <span class="subtitle">让 AI 自动读懂任意 Word 模板并提取属性，一键贴码/截图并物理克隆填充写回 Word 报告</span>
       </div>
     </div>
 
@@ -34,7 +33,7 @@
           <template #title>
             <div class="card-title-box">
               <FileTextOutlined class="title-icon" />
-              <span>1. 录入配置与原始资料 (方案A)</span>
+              <span>1. 录入配置与原始资料</span>
             </div>
           </template>
 
@@ -43,7 +42,7 @@
             <a-form-item label="文档格式模板选择">
               <a-radio-group v-model:value="config.templateType" class="full-width-radio">
                 <a-radio-button value="nannan">河北南网接口文档格式 (内置默认)</a-radio-button>
-                <a-radio-button value="custom">自定义上传模板 (.docx)</a-radio-button>
+                <a-radio-button value="custom">上传自定义模板 (.docx)</a-radio-button>
               </a-radio-group>
             </a-form-item>
 
@@ -52,15 +51,32 @@
               <a-upload-dragger
                 name="file"
                 :multiple="false"
-                action=""
-                :beforeUpload="handleTemplateUpload"
+                action="/ai-lab-hub-api/word/analyze-template"
+                :headers="uploadHeaders"
+                @change="handleTemplateUploadChange"
               >
                 <p class="ant-upload-drag-icon">
                   <InboxOutlined />
                 </p>
-                <p class="ant-upload-text">将您的 .docx 模板文件拖拽到此处，或点击浏览上传</p>
-                <p class="ant-upload-hint">系统将自动分析并匹配模板中的动态替换标签</p>
+                <p class="ant-upload-text">将您的自定义 .docx 模板拖入此，或点击浏览上传</p>
+                <p class="ant-upload-hint">✨ AI 将自动读懂模板大纲并自适应生成右侧修改表单！</p>
               </a-upload-dragger>
+            </div>
+
+            <!-- 截图/拓扑图粘贴上传区 -->
+            <div class="image-paste-box">
+              <div class="paste-zone">
+                <div class="zone-label">📷 接口示意图/流程时序图 (支持直接 Ctrl + V 粘贴截图)</div>
+                <div v-if="getCurApiImage()" class="preview-container">
+                  <img :src="getCurApiImage()" class="paste-preview" alt="paste-preview" />
+                  <a-button type="link" danger size="small" @click="removeCurApiImage" class="remove-img-btn">
+                    移除图片
+                  </a-button>
+                </div>
+                <div v-else class="paste-placeholder">
+                  <span>在屏幕截图后，直接在此处按下 Ctrl + V 粘贴即可智能上传并绑定！</span>
+                </div>
+              </div>
             </div>
 
             <!-- 数据源输入 -->
@@ -83,19 +99,19 @@
               class="parse-btn"
             >
               <template #icon><ThunderboltOutlined /></template>
-              <span>{{ parsing ? '大模型正在智能提取结构中...' : '智能提取接口数据' }}</span>
+              <span>{{ parsing ? '大模型正在读取 Schema 并对齐提取中...' : 'AI 智能提取并对齐数据' }}</span>
             </a-button>
           </a-form>
         </a-card>
       </div>
 
-      <!-- 右栏：解析字段可视化微调 -->
+      <!-- 右栏：解析字段可视化微调 (完全 Schema 动态渲染) -->
       <div class="right-panel">
         <a-card :bordered="false" class="panel-card result-card">
           <template #title>
             <div class="card-title-box">
               <SlidersOutlined class="title-icon" />
-              <span>2. 字段校对与智能补全 (方案A)</span>
+              <span>2. 字段校对与智能补全 (已对齐模板 Schema)</span>
             </div>
           </template>
           
@@ -111,124 +127,75 @@
           <!-- 解析出接口后的大纲编辑区 -->
           <div v-else class="api-editor-area">
             <div class="helper-bar">
-              <span class="badge">已成功提取 {{ apiList.length }} 个接口大纲</span>
-              <span class="tip">温馨提示：您可直接在下方修改数据，点击标签页可切换接口。</span>
+              <span class="badge">已成功提取 {{ apiList.length }} 个大纲区块</span>
+              <span class="tip">温馨提示：点击标签页可切换接口；支持一键补全各字段。</span>
             </div>
 
             <a-tabs v-model:activeKey="activeApiIndex" type="card" class="api-tabs">
-              <a-tab-pane v-for="(api, idx) in apiList" :key="idx" :tab="api.name">
-                <div class="api-meta-badge">
-                  <span :class="['method-tag', api.method.toLowerCase()]">{{ api.method }}</span>
-                  <span class="api-url-text">{{ api.url }}</span>
-                </div>
-
+              <a-tab-pane v-for="(api, idx) in apiList" :key="idx" :tab="api.fields.name || ('区块 ' + (idx + 1))">
+                
                 <a-form layout="vertical" class="inner-form">
-                  <div class="two-column-row">
-                    <a-form-item label="接口中文名称" class="flex-1">
-                      <a-input v-model:value="api.name" />
-                    </a-form-item>
-                    <a-form-item label="请求 URL" class="flex-1">
-                      <a-input v-model:value="api.url" />
-                    </a-form-item>
+                  <!-- 1. 动态生成 Schema 中规划的 Fields 属性项 -->
+                  <div class="dynamic-fields-grid">
+                    <div v-for="field in schema.fields" :key="field.key" class="field-item">
+                      <a-form-item :label="field.label">
+                        <a-textarea v-if="field.type === 'textarea'" v-model:value="api.fields[field.key]" :rows="3" />
+                        <a-input v-else v-model:value="api.fields[field.key]" />
+                      </a-form-item>
+                    </div>
                   </div>
 
-                  <a-form-item label="接口描述说明">
-                    <a-textarea v-model:value="api.description" :rows="2" />
-                  </a-form-item>
-
-                  <!-- 请求参数表 -->
-                  <div class="table-section">
+                  <!-- 2. 动态生成 Schema 中规划的 Tables 表格 -->
+                  <div v-for="tableSchema in schema.tables" :key="tableSchema.key" class="table-section margin-top-md">
                     <div class="table-title">
-                      <span>请求参数说明 (Request Params)</span>
-                      <a-button type="link" size="small" @click="addParam(api.requestParams)">
-                        + 添加参数
+                      <span>{{ tableSchema.label }}</span>
+                      <a-button type="link" size="small" @click="addRow(api.tables[tableSchema.key], tableSchema.columns)">
+                        + 添加数据行
                       </a-button>
                     </div>
+
                     <a-table 
-                      :dataSource="api.requestParams" 
-                      :columns="paramColumns" 
+                      :dataSource="api.tables[tableSchema.key]" 
+                      :columns="getAntdColumns(tableSchema.columns)" 
                       size="small" 
                       :pagination="false"
                       bordered
                     >
                       <template #bodyCell="{ column, record, index }">
-                        <template v-if="column.key === 'name'">
-                          <a-input v-model:value="record.name" size="small" />
-                        </template>
-                        <template v-if="column.key === 'required'">
-                          <a-select v-model:value="record.required" size="small" class="select-required">
-                            <a-select-option value="是">是</a-select-option>
-                            <a-select-option value="否">否</a-select-option>
-                          </a-select>
-                        </template>
-                        <template v-if="column.key === 'type'">
-                          <a-input v-model:value="record.type" size="small" />
-                        </template>
-                        <template v-if="column.key === 'description'">
-                          <a-input v-model:value="record.description" size="small" />
-                        </template>
                         <template v-if="column.key === 'action'">
-                          <a-button type="link" danger size="small" @click="deleteParam(api.requestParams, index)">
+                          <a-button type="link" danger size="small" @click="deleteRow(api.tables[tableSchema.key], index)">
                             删除
                           </a-button>
+                        </template>
+                        <template v-else>
+                          <a-input v-model:value="record[column.key]" size="small" />
                         </template>
                       </template>
                     </a-table>
                   </div>
 
-                  <!-- 返回参数表 -->
-                  <div class="table-section margin-top-md">
-                    <div class="table-title">
-                      <span>返回参数说明 (Response Params)</span>
-                      <a-button type="link" size="small" @click="addParam(api.responseParams)">
-                        + 添加参数
-                      </a-button>
+                  <!-- 3. 自定义扩展属性项 -->
+                  <div class="custom-fields-section margin-top-md">
+                    <div class="section-divider">自定义扩展项 (Key-Value)</div>
+                    <div v-for="(val, key) in api.extraFields" :key="key" class="extra-field-row">
+                      <a-input :value="key" @change="e => renameExtraKey(api, key, e.target.value)" class="extra-key" size="small" />
+                      <a-input v-model:value="api.extraFields[key]" class="extra-value" size="small" />
+                      <a-button type="link" danger size="small" @click="deleteExtraField(api, key)">删除</a-button>
                     </div>
-                    <a-table 
-                      :dataSource="api.responseParams" 
-                      :columns="responseColumns" 
-                      size="small" 
-                      :pagination="false"
-                      bordered
-                    >
-                      <template #bodyCell="{ column, record, index }">
-                        <template v-if="column.key === 'name'">
-                          <a-input v-model:value="record.name" size="small" />
-                        </template>
-                        <template v-if="column.key === 'type'">
-                          <a-input v-model:value="record.type" size="small" />
-                        </template>
-                        <template v-if="column.key === 'description'">
-                          <a-input v-model:value="record.description" size="small" />
-                        </template>
-                        <template v-if="column.key === 'action'">
-                          <a-button type="link" danger size="small" @click="deleteParam(api.responseParams, index)">
-                            删除
-                          </a-button>
-                        </template>
-                      </template>
-                    </a-table>
+                    <a-button type="dashed" size="small" block @click="addExtraField(api)" class="margin-top-sm">
+                      + 增加自定义说明属性
+                    </a-button>
                   </div>
 
-                  <!-- 示例卡片 -->
-                  <div class="two-column-row margin-top-md">
-                    <a-form-item label="入参 JSON 示例" class="flex-1">
-                      <a-textarea v-model:value="api.requestExample" :rows="4" class="font-mono" />
-                    </a-form-item>
-                    <a-form-item label="返回 JSON 示例" class="flex-1">
-                      <a-textarea v-model:value="api.responseExample" :rows="4" class="font-mono" />
-                    </a-form-item>
-                  </div>
-
-                  <!-- 智能补全 -->
-                  <div class="action-bar">
+                  <!-- 4. 单项 AI 脑补 -->
+                  <div class="action-bar margin-top-md">
                     <a-button 
                       type="dashed" 
                       :loading="api.completing" 
                       @click="autoCompleteApi(api)"
                       class="magic-btn"
                     >
-                      <span>🪄 一键 AI 脑补字段含义与 JSON 示例</span>
+                      <span>🪄 一键 AI 脑补本区块缺失的字段与参数说明</span>
                     </a-button>
                   </div>
                 </a-form>
@@ -246,136 +213,8 @@
                 class="export-btn"
               >
                 <template #icon><DownloadOutlined /></template>
-                <span>一键导出为规范 Word 文档 (.docx)</span>
+                <span>一键导出为符合模板规范的 Word 文档 (.docx)</span>
               </a-button>
-            </div>
-          </div>
-        </a-card>
-      </div>
-    </div>
-
-    <!-- ================================================================= -->
-    <!-- 渲染 方案 B：线性步骤引导向导布局 -->
-    <!-- ================================================================= -->
-    <div v-if="currentLayout === 'B'" class="step-layout">
-      <!-- 步骤指示条 -->
-      <a-card :bordered="false" class="panel-card step-nav-card">
-        <a-steps :current="currentStep" :items="stepItems" />
-      </a-card>
-
-      <!-- 步骤一：输入页 -->
-      <div v-if="currentStep === 0" class="step-content">
-        <a-card :bordered="false" class="panel-card content-card animate-fade">
-          <a-form layout="vertical">
-            <div class="two-column-row">
-              <a-form-item label="模板设置" class="flex-1">
-                <a-radio-group v-model:value="config.templateType" class="full-width-radio">
-                  <a-radio-button value="nannan">河北南网接口文档格式 (默认内置)</a-radio-button>
-                  <a-radio-button value="custom">上传本地 Docx 自定义模板</a-radio-button>
-                </a-radio-group>
-              </a-form-item>
-            </div>
-
-            <!-- 拖拽上传区 -->
-            <div class="drag-upload-box margin-top-md">
-              <a-upload-dragger
-                name="file"
-                :multiple="false"
-                action=""
-                :beforeUpload="handleTemplateUpload"
-              >
-                <p class="ant-upload-drag-icon"><InboxOutlined /></p>
-                <p class="ant-upload-text">请将原始接口代码 (.java)、Swagger JSON 或者是自定义模板拖拽到这里</p>
-                <p class="ant-upload-hint">支持多文件识别合并，AI 将为您智能提取字段</p>
-              </a-upload-dragger>
-            </div>
-
-            <a-form-item label="或者直接贴入原始资料内容" class="margin-top-md">
-              <a-textarea v-model:value="config.material" :rows="10" placeholder="贴入接口代码..." class="code-textarea" />
-            </a-form-item>
-
-            <div class="step-actions">
-              <a-button type="primary" size="large" @click="goToStepOne" class="step-next-btn">
-                <span>智能抽取接口并前往下一步 ➔</span>
-              </a-button>
-            </div>
-          </a-form>
-        </a-card>
-      </div>
-
-      <!-- 步骤二：校对微调页 -->
-      <div v-if="currentStep === 1" class="step-content">
-        <a-card :bordered="false" class="panel-card content-card animate-fade">
-          <div class="step-info-bar">
-            <span>🔍 接口列表解析完成，您可在此对参数说明进行在线审计：</span>
-            <a-button type="primary" @click="oneClickCompleteAll" class="magic-btn-glow">
-              🪄 一键 AI 脑补全部缺失字段说明
-            </a-button>
-          </div>
-
-          <!-- 横向卡片展示解析的接口列表 -->
-          <div class="step-api-list">
-            <a-card v-for="(api, idx) in apiList" :key="idx" class="api-item-card" size="small">
-              <template #title>
-                <span :class="['method-tag', api.method.toLowerCase()]">{{ api.method }}</span>
-                <span class="api-title-text">{{ api.name }} ({{ api.url }})</span>
-              </template>
-
-              <!-- 内嵌表格微调 -->
-              <a-table :dataSource="api.requestParams" :columns="paramColumns" size="small" :pagination="false" bordered>
-                <template #bodyCell="{ column, record, index }">
-                  <template v-if="column.key === 'name'">
-                    <a-input v-model:value="record.name" size="small" />
-                  </template>
-                  <template v-if="column.key === 'required'">
-                    <a-select v-model:value="record.required" size="small">
-                      <a-select-option value="是">是</a-select-option>
-                      <a-select-option value="否">否</a-select-option>
-                    </a-select>
-                  </template>
-                  <template v-if="column.key === 'type'">
-                    <a-input v-model:value="record.type" size="small" />
-                  </template>
-                  <template v-if="column.key === 'description'">
-                    <a-input v-model:value="record.description" size="small" />
-                  </template>
-                  <template v-if="column.key === 'action'">
-                    <a-button type="link" danger size="small" @click="deleteParam(api.requestParams, index)">删除</a-button>
-                  </template>
-                </template>
-              </a-table>
-            </a-card>
-          </div>
-
-          <div class="step-actions split-row margin-top-md">
-            <a-button size="large" @click="currentStep = 0">上一步</a-button>
-            <a-button type="primary" size="large" @click="goToStepTwo" class="step-next-btn">下一步，排版并导出</a-button>
-          </div>
-        </a-card>
-      </div>
-
-      <!-- 步骤三：排版导出 -->
-      <div v-if="currentStep === 2" class="step-content">
-        <a-card :bordered="false" class="panel-card content-card animate-fade centered-content">
-          <div v-if="exporting" class="loading-state">
-            <a-progress type="circle" :percent="exportPercent" :stroke-color="{ '0%': '#10b881', '100%': '#8b5cf6' }" />
-            <h4 class="margin-top-md">大纲与河北南网Word模板插值排版中...</h4>
-            <p class="tip">正在应用模板的淡青色表格表头和细线边框样式...</p>
-          </div>
-
-          <div v-else class="success-state">
-            <div class="word-icon-glow">
-              <FileTextOutlined class="big-word-icon" />
-            </div>
-            <h3>文档渲染打包成功！</h3>
-            <p class="subtitle">文件名：河北南网火电机组涉网性能评估分析系统接口文档_Generated.docx</p>
-
-            <div class="success-actions margin-top-md">
-              <a-button type="primary" size="large" @click="downloadMockFile" class="download-btn">
-                <template #icon><DownloadOutlined /></template>
-                <span>立即物理下载生成的 Word 报告</span>
-              </a-button>
-              <a-button size="large" @click="restartWorkflow" class="margin-left-sm">重新生成</a-button>
             </div>
           </div>
         </a-card>
@@ -385,10 +224,8 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
-import { 
-  ArrowLeft 
-} from 'lucide-vue-next';
+import { reactive, ref, watch } from 'vue';
+import { ArrowLeft } from 'lucide-vue-next';
 import { 
   FileTextOutlined,
   SlidersOutlined,
@@ -398,217 +235,342 @@ import {
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 
-// 视图层配置
-const currentLayout = ref('A'); // 可选 A (左右卡片) 或 B (步骤引导)
-const currentStep = ref(0);     // 步骤导向值
+// 视图控制
+const currentLayout = ref('A'); 
+const parsing = ref(false);
+const exporting = ref(false);
+const activeApiIndex = ref(0);
 
-// 步骤条 items 配置，100% 适配 Ant Design Vue 4.x 官方属性规范，防止 a-step 嵌套组件渲染白屏
-const stepItems = [
-  { title: '配置数据与模板', description: '黏贴接口代码或上传自定义Word模板' },
-  { title: '智能解析与微调', description: '大纲审核及缺失字段智能脑补' },
-  { title: '排版生成与物理导出', description: '克隆表格样式并写入物理文档' }
-];
-
-// 配置表单
+// 表单基本配置
 const config = reactive({
   templateType: 'nannan',
   material: ''
 });
 
-// 解析与导出状态
-const parsing = ref(false);
-const exporting = ref(false);
-const exportPercent = ref(0);
-const activeApiIndex = ref(0);
+// 全局暂存图片
+const globalImageId = ref(null);
+const globalImageUrl = ref(null);
 
-// 解析结果接口列表
-const apiList = ref([]);
-
-// 字段定义
-const paramColumns = [
-  { title: '参数名称', dataIndex: 'name', key: 'name', width: '25%' },
-  { title: '是否必填', dataIndex: 'required', key: 'required', width: '20%' },
-  { title: '类型', dataIndex: 'type', key: 'type', width: '20%' },
-  { title: '字段说明', dataIndex: 'description', key: 'description', width: '25%' },
-  { title: '操作', key: 'action', width: '10%', align: 'center' }
-];
-
-const responseColumns = [
-  { title: '参数名称', dataIndex: 'name', key: 'name', width: '30%' },
-  { title: '类型', dataIndex: 'type', key: 'type', width: '25%' },
-  { title: '字段说明', dataIndex: 'description', key: 'description', width: '35%' },
-  { title: '操作', key: 'action', width: '10%', align: 'center' }
-];
-
-// 自定义模板上传拦截
-const handleTemplateUpload = (file) => {
-  message.success(`本地模板 "${file.name}" 上传成功，将作为排版底标进行字段插值。`);
-  return false; // 阻断自动上传，保存在本地
+// JWT 鉴权统一请求头适配，解决后端拦截器未登录拦截报错的问题
+const uploadHeaders = {
+  Authorization: 'Bearer ' + localStorage.getItem('token')
 };
 
-// 触发大模型提取数据
-const startParsing = () => {
+// 默认的河北南网接口文档结构 Schema (AI 分析自定义模板后会覆盖它)
+const defaultSchema = {
+  fields: [
+    { key: 'name', label: '接口中文名称', type: 'input' },
+    { key: 'url', label: '请求 URL', type: 'input' },
+    { key: 'method', label: '请求方式(GET/POST)', type: 'input' },
+    { key: 'description', label: '接口描述说明', type: 'textarea' },
+    { key: 'requestExample', label: '请求 JSON 示例', type: 'textarea' },
+    { key: 'responseExample', label: '返回 JSON 示例', type: 'textarea' }
+  ],
+  tables: [
+    {
+      key: 'requestParams',
+      label: '请求参数说明 (Request Params)',
+      columns: ['参数名称', '是否必填', '类型', '字段说明']
+    },
+    {
+      key: 'responseParams',
+      label: '返回参数说明 (Response Params)',
+      columns: ['参数名称', '类型', '字段说明']
+    }
+  ]
+};
+
+const schema = ref(JSON.parse(JSON.stringify(defaultSchema)));
+const apiList = ref([]);
+
+// 监听模板类型变化，若选回默认，重置 schema
+watch(() => config.templateType, (val) => {
+  if (val === 'nannan') {
+    schema.value = JSON.parse(JSON.stringify(defaultSchema));
+  }
+});
+
+// 1. 处理自定义模板上传并解析 Schema
+const handleTemplateUploadChange = (info) => {
+  const status = info.file.status;
+  if (status === 'uploading') {
+    return;
+  }
+  if (status === 'done') {
+    const res = info.file.response;
+    if (res && res.code === 200) {
+      try {
+        schema.value = JSON.parse(res.data);
+        message.success(`自定义模板 "${info.file.name}" 解析成功！已动态对齐表单字段。`);
+      } catch (e) {
+        message.error('模板解析的数据格式非法，已降级回默认 Schema');
+        schema.value = JSON.parse(JSON.stringify(defaultSchema));
+      }
+    } else {
+      message.error(res ? res.message : '模板解析失败');
+    }
+  } else if (status === 'error') {
+    message.error(`${info.file.name} 上传失败.`);
+  }
+};
+
+// 2. 粘贴事件监听 (支持全局 Ctrl+V 直接粘贴上传系统截图)
+const handlePaste = async (event) => {
+  const items = (event.clipboardData || window.clipboardData).items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const blob = items[i].getAsFile();
+      event.preventDefault(); // 阻断默认粘贴
+
+      message.loading({ content: '检测到屏幕截图，正在智能物理上传中...', key: 'paste-img', duration: 0 });
+
+      const formData = new FormData();
+      formData.append('file', blob, 'pasted_screenshot.png');
+
+      try {
+        const res = await fetch('/ai-lab-hub-api/word/upload-image', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + localStorage.getItem('token')
+          },
+          body: formData
+        });
+        const result = await res.json();
+        if (result.code === 200) {
+          message.success({ content: '截图粘贴并暂存成功！已自动关联当前区块。', key: 'paste-img', duration: 2 });
+          
+          // 如果列表已有接口，直接绑在当前接口上
+          if (apiList.value.length > 0) {
+            const curApi = apiList.value[activeApiIndex.value];
+            curApi.fields.imageId = result.data.imageId;
+            curApi.fields.imageUrl = result.data.url;
+          } else {
+            // 如果还未提取，先暂存在全局
+            globalImageId.value = result.data.imageId;
+            globalImageUrl.value = result.data.url;
+          }
+        } else {
+          message.error({ content: '图片上传失败: ' + result.message, key: 'paste-img' });
+        }
+      } catch (err) {
+        message.error({ content: '网络错误，无法将图片粘贴同步至服务器', key: 'paste-img' });
+      }
+    }
+  }
+};
+
+// 获取当前接口所绑定的图片地址
+const getCurApiImage = () => {
+  if (apiList.value.length > 0) {
+    return apiList.value[activeApiIndex.value]?.fields?.imageUrl || null;
+  }
+  return globalImageUrl.value;
+};
+
+// 移除当前接口绑定的图片
+const removeCurApiImage = () => {
+  if (apiList.value.length > 0) {
+    const curApi = apiList.value[activeApiIndex.value];
+    curApi.fields.imageId = null;
+    curApi.fields.imageUrl = null;
+  } else {
+    globalImageId.value = null;
+    globalImageUrl.value = null;
+  }
+  message.info('图片关联已解除');
+};
+
+// 3. 开始智能解析大纲
+const startParsing = async () => {
   if (!config.material.trim()) {
     message.warning('请先在左侧输入框贴入原始接口代码或资料！');
     return;
   }
-  
+
   parsing.value = true;
   apiList.value = [];
 
-  setTimeout(() => {
-    parsing.value = false;
-    message.success('AI 智能分析大纲抽取完成！已自动为您生成结构化字段。');
-    
-    // Mock 结构化抽取后的数据
-    apiList.value = getMockApis();
-    activeApiIndex.value = 0;
-  }, 1200);
-};
-
-// 字段增加删除
-const addParam = (paramsList) => {
-  paramsList.push({
-    name: '',
-    required: '否',
-    type: 'String',
-    description: ''
-  });
-  message.info('已新增一行参数槽位，请完善定义');
-};
-
-const deleteParam = (paramsList, idx) => {
-  paramsList.splice(idx, 1);
-  message.info('参数已移除');
-};
-
-// 🪄 单接口 AI 补全
-const autoCompleteApi = (api) => {
-  api.completing = true;
-  setTimeout(() => {
-    api.completing = false;
-    api.requestParams.forEach(p => {
-      if (!p.description) p.description = `AI自动生成的[${p.name}]属性业务含义说明`;
-    });
-    api.responseParams.forEach(p => {
-      if (!p.description) p.description = `AI根据返回结构预测 of [${p.name}]字段说明`;
-    });
-    message.success(`[${api.name}] 缺漏字段说明及示例已由 AI 成功补齐润色！`);
-  }, 1000);
-};
-
-// 方案 B：分步跳转控制
-const goToStepOne = () => {
-  if (!config.material.trim()) {
-    message.warning('请先输入接口代码或粘贴 Swagger 资料！');
-    return;
-  }
-  message.loading('AI 智能解析大纲中...', 1);
-  apiList.value = getMockApis();
-  setTimeout(() => {
-    currentStep.value = 1;
-  }, 1000);
-};
-
-const goToStepTwo = () => {
-  currentStep.value = 2;
-  exporting.value = true;
-  exportPercent.value = 0;
-  
-  // 模拟进度条增长
-  const timer = setInterval(() => {
-    exportPercent.value += 20;
-    if (exportPercent.value >= 100) {
-      clearInterval(timer);
-      exporting.value = false;
-      message.success('物理模板生成成功！已经保存到本地文件管理器。');
-    }
-  }, 400);
-};
-
-// 方案 B：脑补全部
-const oneClickCompleteAll = () => {
-  message.loading('AI 正在全量审查参数并自动脑补翻译解释...', 1);
-  setTimeout(() => {
-    apiList.value.forEach(api => {
-      api.requestParams.forEach(p => {
-        if (!p.description) p.description = `AI自动脑补的[${p.name}]字段业务含义说明`;
-      });
-    });
-    message.success('已自动补齐所有接口的缺失参数含义！');
-  }, 1000);
-};
-
-// 重新开始
-const restartWorkflow = () => {
-  currentStep.value = 0;
-  config.material = '';
-  apiList.value = [];
-};
-
-// 导出 Word 文档 (方案 A)
-const exportToWord = () => {
-  exporting.value = true;
-  message.loading({ content: '正在读取河北南网火电接口模板样式...', key: 'export' });
-
-  setTimeout(() => {
-    message.loading({ content: '正在物理插值克隆表格样式并写入段落...', key: 'export', duration: 1 });
-    
-    setTimeout(() => {
-      exporting.value = false;
-      message.success({ content: '河北南网火电机组涉网性能接口说明文档生成成功！文件已存入磁盘。', key: 'export', duration: 3 });
-      downloadMockFile();
-    }, 1500);
-  }, 1200);
-};
-
-// 物理下载动作
-const downloadMockFile = () => {
-  const confirmDownload = confirm('文档已物理生成完毕，是否立即下载？\n文件名：河北南网火电机组涉网性能评估分析系统接口文档_Generated.docx');
-  if (confirmDownload) {
-    message.info('模拟开始下载 docx 报告中...');
-  }
-};
-
-function getMockApis() {
-  return [
-    {
-      name: '首页大屏-容量分类',
-      url: '/index/bigScreen/capacityCategory',
-      method: 'GET',
-      description: '按额定容量分档统计已启用且关联场站的机组数量',
-      requestParams: [
-        { name: 'status', required: '否', type: 'Int', description: '场站状态过滤 (1:启用, 0:停用)' }
-      ],
-      requestExample: '{\n  "status": 1\n}',
-      responseExample: '{\n  "status": 200,\n  "message": "操作成功",\n  "data": [\n    { "type": "1000MW", "count": 12 },\n    { "type": "600MW", "count": 28 }\n  ]\n}',
-      responseParams: [
-        { name: 'status', type: 'Int', description: '响应代码 (200:成功)' },
-        { name: 'message', type: 'String', description: '响应提示信息' },
-        { name: 'data', type: 'List', description: '容量分档统计列表数据' }
-      ],
-      completing: false
-    },
-    {
-      name: '机组涉网性能指标上报',
-      url: '/performance/evaluate/submit',
+  try {
+    const response = await fetch('/ai-lab-hub-api/word/parse', {
       method: 'POST',
-      description: '用于火力发电机组一次调频、AGC性能、励磁系统参数等涉网指标的数据申报',
-      requestParams: [
-        { name: 'unitId', required: '是', type: 'Long', description: '机组物理 ID' },
-        { name: 'evaluateDate', required: '是', type: 'String', description: '评估周期时间 (yyyy-MM)' },
-        { name: 'agcScore', required: '否', type: 'Float', description: '' }
-      ],
-      requestExample: '{\n  "unitId": 9931,\n  "evaluateDate": "2025-02",\n  "agcScore": 94.5\n}',
-      responseExample: '{\n  "status": 200,\n  "message": "申报上报成功"\n}',
-      responseParams: [
-        { name: 'status', type: 'Int', description: '操作状态' },
-        { name: 'message', type: 'String', description: '处理回执信息' }
-      ],
-      completing: false
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      },
+      body: JSON.stringify({
+        material: config.material,
+        schemaJson: JSON.stringify(schema.value)
+      })
+    });
+
+    const res = await response.json();
+    if (res.code === 200) {
+      const parsedData = JSON.parse(res.data);
+      
+      // 遍历接口补全可能缺失的 data-structure
+      apiList.value = parsedData.map(item => {
+        // 确保 fields 对象存在
+        if (!item.fields) item.fields = {};
+        
+        // 绑定先前暂存的全局图片（若有）
+        if (globalImageId.value && !item.fields.imageId) {
+          item.fields.imageId = globalImageId.value;
+          item.fields.imageUrl = globalImageUrl.value;
+        }
+
+        // 确保 tables 字典里的表格完全被声明
+        if (!item.tables) item.tables = {};
+        schema.value.tables.forEach(t => {
+          if (!item.tables[t.key]) {
+            item.tables[t.key] = [];
+          }
+        });
+
+        // 初始化 extraFields
+        if (!item.extraFields) {
+          item.extraFields = {};
+        }
+
+        item.completing = false;
+        return item;
+      });
+
+      // 消费掉全局图片
+      globalImageId.value = null;
+      globalImageUrl.value = null;
+
+      activeApiIndex.value = 0;
+      message.success('AI 智能分析大纲抽取完成！已为您自动生成对齐数据。');
+    } else {
+      message.error('AI 提取失败: ' + res.message);
     }
-  ];
-}
+  } catch (e) {
+    message.error('调用大语言模型发生网络异常，请检查网关。');
+  } finally {
+    parsing.value = false;
+  }
+};
+
+// 4. 一键单个接口 AI 脑补
+const autoCompleteApi = async (api) => {
+  api.completing = true;
+  try {
+    const res = await fetch('/ai-lab-hub-api/word/complete-api', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      },
+      body: JSON.stringify({ apiJson: JSON.stringify(api) })
+    });
+    const result = await res.json();
+    if (result.code === 200) {
+      const completed = JSON.parse(result.data);
+      api.fields = completed.fields;
+      api.tables = completed.tables;
+      api.extraFields = completed.extraFields || {};
+      message.success(`[${api.fields.name || '接口'}] 字段说明已通过 AI 自动补齐脑补！`);
+    } else {
+      message.error('脑补失败: ' + result.message);
+    }
+  } catch (err) {
+    message.error('调用 AI 补全网络错误');
+  } finally {
+    api.completing = false;
+  }
+};
+
+// 5. 导出 Word 文档 (Apache POI 流式拉取)
+const exportToWord = async () => {
+  exporting.value = true;
+  message.loading({ content: '正在打包字段数据与图片，并物理插值克隆 Word...', key: 'export', duration: 0 });
+
+  try {
+    const res = await fetch('/ai-lab-hub-api/word/export', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      },
+      body: JSON.stringify({
+        schemaJson: JSON.stringify(schema.value),
+        apiList: apiList.value,
+        isCustom: config.templateType === 'custom'
+      })
+    });
+
+    if (res.ok) {
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = config.templateType === 'custom' ? '自定义模板文档_Generated.docx' : '河北南网火电说明文档_Generated.docx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      message.success({ content: '万能 Word 报文填充导出成功！请在浏览器下载栏查看文件。', key: 'export', duration: 3 });
+    } else {
+      message.error({ content: '物理导出失败，请检查后端 POI 克隆模块状态。', key: 'export' });
+    }
+  } catch (e) {
+    message.error({ content: '网络错误，物理导出失败。', key: 'export' });
+  } finally {
+    exporting.value = false;
+  }
+};
+
+// 6. 动态表格增加/删除行
+const addRow = (tableList, columns) => {
+  const newRow = {};
+  columns.forEach(col => {
+    newRow[col] = '';
+  });
+  tableList.push(newRow);
+  message.info('表格槽位已新增，请完善定义');
+};
+
+const deleteRow = (tableList, idx) => {
+  tableList.splice(idx, 1);
+  message.info('数据行已移除');
+};
+
+// 动态将 Schema 的列名数组转换为 Antd 的 Table 字段对象
+const getAntdColumns = (columns) => {
+  const antdCols = columns.map(col => {
+    return {
+      title: col,
+      dataIndex: col,
+      key: col
+    };
+  });
+  // 追加一个操作列
+  antdCols.push({
+    title: '操作',
+    key: 'action',
+    width: '80px',
+    align: 'center'
+  });
+  return antdCols;
+};
+
+// 7. 自定义扩展字段 Key-Value 动态管理
+const addExtraField = (api) => {
+  const uniqueKey = '自定义字段_' + (Object.keys(api.extraFields).length + 1);
+  api.extraFields[uniqueKey] = '';
+  message.info('扩展说明属性已追加');
+};
+
+const deleteExtraField = (api, key) => {
+  delete api.extraFields[key];
+  message.info('扩展属性已删除');
+};
+
+const renameExtraKey = (api, oldKey, newKey) => {
+  if (oldKey === newKey) return;
+  const val = api.extraFields[oldKey];
+  delete api.extraFields[oldKey];
+  api.extraFields[newKey] = val;
+};
 </script>
 
 <style scoped>
@@ -651,7 +613,6 @@ function getMockApis() {
   height: 14px;
 }
 
-/* 演示热切换器样式 */
 .layout-switcher {
   display: flex;
   align-items: center;
@@ -694,362 +655,232 @@ function getMockApis() {
   border-radius: var(--radius-lg);
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
+  transition: background 0.3s, border 0.3s;
+}
+
+/* 暗黑明亮主题变量适配 */
+.light .panel-card {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
 }
 
 .card-title-box {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 16px;
+  gap: 8px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .title-icon {
   color: var(--primary-color);
-  font-size: 18px;
-}
-
-.full-width-radio {
-  width: 100%;
-  display: flex;
-}
-
-.full-width-radio :deep(.ant-radio-button-wrapper) {
-  flex: 1;
-  text-align: center;
-  background: rgba(255, 255, 255, 0.03);
-  border-color: var(--border-color);
-  color: var(--text-secondary);
-}
-
-.full-width-radio :deep(.ant-radio-button-wrapper-checked) {
-  background: var(--primary-gradient) !important;
-  color: #ffffff !important;
-  border-color: transparent !important;
 }
 
 .upload-container {
-  margin-top: 14px;
-  background: rgba(0, 0, 0, 0.15);
+  margin-bottom: 16px;
+}
+
+/* 图片粘贴录入区样式 */
+.image-paste-box {
+  margin-bottom: 16px;
+}
+
+.paste-zone {
+  border: 1.5px dashed var(--border-color);
+  background: rgba(255, 255, 255, 0.01);
+  padding: 12px;
   border-radius: var(--radius-md);
+  transition: all 0.3s;
+}
+
+.light .paste-zone {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.paste-zone:hover {
+  border-color: var(--primary-color);
+}
+
+.zone-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.paste-placeholder {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.preview-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.02);
   padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
 }
 
-:deep(.ant-upload-drag) {
-  background: transparent !important;
-  border: 1px dashed var(--border-color) !important;
-}
-
-:deep(.ant-upload-drag:hover) {
-  border-color: var(--primary-color) !important;
-}
-
-.margin-top-md {
-  margin-top: 20px;
+.paste-preview {
+  max-width: 140px;
+  max-height: 80px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
 .code-textarea {
-  font-family: var(--font-mono);
-  background: rgba(0, 0, 0, 0.2);
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.15) !important;
   border-color: var(--border-color);
-  color: #f1f1f1;
-  border-radius: var(--radius-md);
+  color: var(--text-primary);
 }
 
-.code-textarea:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-glow);
+.light .code-textarea {
+  background: #ffffff !important;
+  color: #1f2937;
 }
 
 .parse-btn {
-  margin-top: 14px;
-  height: 48px;
-  font-weight: 700;
-  background: var(--primary-gradient);
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
   border: none;
-  box-shadow: 0 4px 15px var(--primary-glow);
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
-/* 右栏：字段微调区域 */
+.parse-btn:hover {
+  opacity: 0.9;
+}
+
 .empty-holder {
-  padding: 100px 0;
+  padding: 80px 0;
   display: flex;
   justify-content: center;
-  align-items: center;
+}
+
+.api-editor-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .helper-bar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 18px;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
 }
 
 .badge {
-  background: rgba(139, 92, 246, 0.15);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: var(--primary-light);
-  padding: 6px 14px;
-  border-radius: 50px;
-  font-size: 12px;
+  background: rgba(16, 184, 129, 0.15);
+  color: #10b881;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-weight: 700;
-  width: fit-content;
 }
 
 .tip {
-  font-size: 12px;
   color: var(--text-muted);
 }
 
-/* Tabs样式 */
-.api-tabs :deep(.ant-tabs-nav) {
-  margin-bottom: 16px !important;
-}
-
-.api-meta-badge {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 8px 16px;
-  border-radius: 6px;
-  margin-bottom: 20px;
-  border: 1px solid var(--border-color);
-}
-
-.inner-form {
-  padding: 8px 0;
-}
-
-.two-column-row {
-  display: flex;
+/* 动态表单栅格 */
+.dynamic-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
-.flex-1 {
-  flex: 1;
+.dynamic-fields-grid .field-item:nth-child(4),
+.dynamic-fields-grid .field-item:nth-child(5),
+.dynamic-fields-grid .field-item:nth-child(6) {
+  grid-column: span 2;
 }
 
 .table-section {
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .table-title {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-  border-left: 2px solid var(--primary-color);
+  color: var(--primary-light);
+  border-left: 3px solid var(--primary-color);
   padding-left: 8px;
 }
 
-:deep(.ant-table) {
-  background: transparent !important;
-  color: var(--text-primary) !important;
-}
-
-:deep(.ant-table-thead > tr > th) {
-  background: rgba(255, 255, 255, 0.04) !important;
-  color: var(--text-secondary) !important;
-  border-bottom: 1px solid var(--border-color) !important;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-:deep(.ant-table-tbody > tr > td) {
-  border-bottom: 1px solid var(--border-color) !important;
-  background: transparent !important;
-}
-
-:deep(.ant-table-cell) {
-  padding: 6px 12px !important;
-}
-
-.select-required {
-  width: 100%;
-}
-
-.font-mono {
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-.action-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-
 .magic-btn {
-  background: rgba(139, 92, 246, 0.08) !important;
-  border-color: rgba(139, 92, 246, 0.4) !important;
-  color: var(--primary-light) !important;
+  background: linear-gradient(to right, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1));
+  border: 1px dashed var(--primary-color);
+  color: var(--primary-light);
+  width: 100%;
+  font-weight: 700;
+  border-radius: 6px;
 }
 
 .magic-btn:hover {
-  border-color: var(--primary-color) !important;
-  background: rgba(139, 92, 246, 0.15) !important;
+  background: rgba(139, 92, 246, 0.2);
+  color: #ffffff;
 }
 
 .export-section {
-  margin-top: 24px;
   border-top: 1px solid var(--border-color);
-  padding-top: 20px;
+  padding-top: 16px;
+  margin-top: 8px;
 }
 
 .export-btn {
-  height: 52px;
-  font-weight: 700;
-  font-size: 15px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #10b881, #059669);
   border: none;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-}
-
-.export-btn:hover {
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
-}
-
-/* ================================================================= */
-/* 方案 B：分步步骤向导样式 */
-/* ================================================================= */
-.step-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.step-nav-card {
-  padding: 12px;
-}
-
-.step-content {
-  margin-top: 10px;
-}
-
-.content-card {
-  min-height: 400px;
-  padding: 24px;
-}
-
-.drag-upload-box {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: var(--radius-md);
-  padding: 16px;
-}
-
-.step-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 24px;
-  border-top: 1px solid var(--border-color);
-  padding-top: 20px;
-}
-
-.step-actions.split-row {
-  justify-content: space-between;
-}
-
-.step-next-btn {
-  height: 48px;
-  padding: 0 32px;
-  background: var(--primary-gradient);
-  border: none;
-  box-shadow: 0 4px 15px var(--primary-glow);
   font-weight: 700;
 }
 
-.step-info-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-color);
-  padding: 12px 20px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
+/* 自定义字段排版 */
+.section-divider {
+  font-size: 12px;
   font-weight: 700;
-  margin-bottom: 20px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
 }
 
-.magic-btn-glow {
-  background: var(--primary-gradient) !important;
-  border: none !important;
-  box-shadow: 0 4px 12px var(--primary-glow) !important;
-  color: #ffffff !important;
-  font-weight: 700;
-}
-
-.step-api-list {
+.extra-field-row {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.api-item-card {
-  background: rgba(255, 255, 255, 0.01) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-.api-title-text {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-left: 8px;
-}
-
-/* 步骤三：物理导出居中样式 */
-.centered-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 80px 0;
-}
-
-.loading-state, .success-state {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 12px;
+  margin-bottom: 8px;
 }
 
-.word-icon-glow {
-  width: 80px;
-  height: 80px;
-  background: rgba(16, 185, 129, 0.15);
-  border: 2px solid rgba(16, 185, 129, 0.4);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
-  margin-bottom: 12px;
+.extra-key {
+  font-weight: 700;
+  width: 120px;
 }
 
-.big-word-icon {
-  font-size: 38px;
-  color: #10b981;
+.extra-value {
+  flex: 1;
 }
 
-.margin-left-sm {
-  margin-left: 12px;
+.margin-top-md {
+  margin-top: 16px;
 }
-
-/* 动效 */
-.animate-fade {
-  animation: fadeIn 0.4s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.margin-top-sm {
+  margin-top: 8px;
 }
 </style>
