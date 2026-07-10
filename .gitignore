@@ -1,0 +1,33 @@
+# AI Superpowers Docs (Private workspaces docs)
+docs/
+
+# Maven
+target/
+*.pom.properties
+*.pom
+dependency-reduced-pom.xml
+
+# Node (Vue)
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# IDEs
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+
+# Logs and Temp
+logs/
+*.log
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db

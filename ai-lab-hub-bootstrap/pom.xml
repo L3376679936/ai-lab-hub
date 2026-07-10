@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>ai-lab-hub</artifactId>
+        <groupId>com.ailab</groupId>
+        <version>1.0.0</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>ai-lab-hub-bootstrap</artifactId>
+
+    <dependencies>
+        <!-- 引入底座核心 (版本由父 POM 管理) -->
+        <dependency>
+            <groupId>com.ailab</groupId>
+            <artifactId>ai-lab-hub-core</artifactId>
+        </dependency>
+        <!-- 引入聚合的工具模块 (版本由父 POM 管理) -->
+        <dependency>
+            <groupId>com.ailab</groupId>
+            <artifactId>module-lab-gen-word</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Spring Boot Maven 打包插件，生成引导 Jar (版本继承自父 POM) -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

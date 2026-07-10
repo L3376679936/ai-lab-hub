@@ -1,0 +1,72 @@
+/* CSS 变量与设计系统定义 */
+
+:root {
+  /* 全局过渡动画 */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* 圆角大小 */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+}
+
+/* 明亮模式 */
+html.light {
+  --bg-color: #f6f8fa;
+  --bg-grid: rgba(99, 102, 241, 0.03);
+  --surface-color: rgba(255, 255, 255, 0.85);
+  --surface-hover: rgba(255, 255, 255, 0.95);
+  --surface-solid: #ffffff;
+  
+  --border-color: rgba(226, 232, 240, 0.8);
+  --border-focus: #6366f1;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  
+  --primary-color: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-glow: rgba(99, 102, 241, 0.15);
+  --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #4f46e5 0%, #9333ea 100%);
+  
+  --sidebar-bg: rgba(255, 255, 255, 0.9);
+  --topbar-bg: rgba(255, 255, 255, 0.8);
+  
+  --card-shadow: 0 4px 20px -2px rgba(148, 163, 184, 0.12), 0 2px 8px -1px rgba(148, 163, 184, 0.08);
+  --card-shadow-hover: 0 12px 30px -4px rgba(99, 102, 241, 0.18), 0 4px 12px -2px rgba(99, 102, 241, 0.1);
+  --modal-overlay: rgba(15, 23, 42, 0.3);
+}
+
+/* 暗黑模式 */
+html.dark {
+  --bg-color: #0b0f19;
+  --bg-grid: rgba(99, 102, 241, 0.05);
+  --surface-color: rgba(22, 28, 45, 0.7);
+  --surface-hover: rgba(30, 41, 59, 0.85);
+  --surface-solid: #161c2d;
+  
+  --border-color: rgba(51, 65, 85, 0.5);
+  --border-focus: #818cf8;
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  --primary-color: #818cf8;
+  --primary-hover: #6366f1;
+  --primary-glow: rgba(129, 140, 248, 0.25);
+  --primary-gradient: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  
+  --sidebar-bg: rgba(15, 23, 42, 0.9);
+  --topbar-bg: rgba(11, 15, 25, 0.85);
+  
+  --card-shadow: 0 4px 24px -6px rgba(0, 0, 0, 0.4), 0 2px 8px -2px rgba(0, 0, 0, 0.3);
+  --card-shadow-hover: 0 16px 36px -8px rgba(99, 102, 241, 0.3), 0 4px 16px -4px rgba(99, 102, 241, 0.2);
+  --modal-overlay: rgba(0, 0, 0, 0.6);
+}
