@@ -112,18 +112,15 @@
           <div v-else class="api-editor-area">
             <div class="helper-bar">
               <span class="badge">已成功提取 {{ apiList.length }} 个接口大纲</span>
-              <span class="tip">温馨提示：您可直接在下方修改任一数据，双击表格单元格即可直接编辑参数。</span>
+              <span class="tip">温馨提示：您可直接在下方修改数据，点击标签页可切换接口。</span>
             </div>
 
-            <a-collapse v-model:activeKey="activeApiIndex" accordion class="api-collapse">
-              <a-collapse-panel v-for="(api, idx) in apiList" :key="idx">
-                <template #header>
-                  <div class="panel-header-title">
-                    <span :class="['method-tag', api.method.toLowerCase()]">{{ api.method }}</span>
-                    <strong class="api-name-text">{{ api.name }}</strong>
-                    <span class="api-url-text">{{ api.url }}</span>
-                  </div>
-                </template>
+            <a-tabs v-model:activeKey="activeApiIndex" type="card" class="api-tabs">
+              <a-tab-pane v-for="(api, idx) in apiList" :key="idx" :tab="api.name">
+                <div class="api-meta-badge">
+                  <span :class="['method-tag', api.method.toLowerCase()]">{{ api.method }}</span>
+                  <span class="api-url-text">{{ api.url }}</span>
+                </div>
 
                 <a-form layout="vertical" class="inner-form">
                   <div class="two-column-row">
@@ -235,8 +232,8 @@
                     </a-button>
                   </div>
                 </a-form>
-              </a-collapse-panel>
-            </a-collapse>
+              </a-tab-pane>
+            </a-tabs>
 
             <!-- 导出阶段 -->
             <div class="export-section">
@@ -597,7 +594,7 @@ function getMockApis() {
       requestParams: [
         { name: 'unitId', required: '是', type: 'Long', description: '机组物理 ID' },
         { name: 'evaluateDate', required: '是', type: 'String', description: '评估周期时间 (yyyy-MM)' },
-        { name: 'agcScore', required: '否', type: 'Float', description: '' } // 刻意留空测试 AI 脑补
+        { name: 'agcScore', required: '否', type: 'Float', description: '' }
       ],
       requestExample: '{\n  "unitId": 9931,\n  "evaluateDate": "2025-02",\n  "agcScore": 94.5\n}',
       responseExample: '{\n  "status": 200,\n  "message": "申报上报成功"\n}',
@@ -802,60 +799,20 @@ function getMockApis() {
   color: var(--text-muted);
 }
 
-.api-collapse {
-  background: transparent !important;
-  border: none !important;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* Tabs样式 */
+.api-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 16px !important;
 }
 
-:deep(.ant-collapse-item) {
-  background: rgba(255, 255, 255, 0.02) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-md) !important;
-  overflow: hidden;
-}
-
-:deep(.ant-collapse-header) {
-  background: rgba(0, 0, 0, 0.15) !important;
-  color: var(--text-primary) !important;
-}
-
-.panel-header-title {
+.api-meta-badge {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.method-tag {
-  font-size: 11px;
-  font-weight: 900;
-  padding: 2px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-}
-
-.method-tag.get {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.method-tag.post {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-.api-name-text {
-  font-size: 13px;
-}
-
-.api-url-text {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border-color);
 }
 
 .inner-form {
