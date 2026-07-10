@@ -1,0 +1,10 @@
+{
+  "name": "office-mcp",
+  "version": "1.0.0",
+  "description": "Office MCP Server for AI-Lab-Hub",
+  "main": "office-mcp.js",
+  "private": true,
+  "dependencies": {
+    "docx": "^8.2.4"
+  }
+}

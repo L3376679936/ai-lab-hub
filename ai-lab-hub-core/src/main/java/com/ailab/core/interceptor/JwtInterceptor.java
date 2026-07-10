@@ -19,14 +19,20 @@ public class JwtInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 获取 Header 里的 Authorization 字段
-        String authHeader = request.getHeader("Authorization");
-        if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
-            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录，请先登录");
+        // 优先从 Header 获取 Token，其次从 URL 参数中获取
+        String token = request.getHeader("Authorization");
+        if (StringUtils.hasText(token) && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        } else {
+            token = request.getParameter("token");
+            if (StringUtils.hasText(token) && token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
         }
 
-        // 截取真正的 Token 字符串
-        String token = authHeader.substring(7);
+        if (!StringUtils.hasText(token)) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户未登录，请先登录");
+        }
         if (JwtUtils.isTokenExpired(token)) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "登录已过期，请重新登录");
         }

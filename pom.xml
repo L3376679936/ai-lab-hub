@@ -23,6 +23,7 @@
         <spring-boot.version>2.7.18</spring-boot.version>
         <mysql-connector.version>8.0.33</mysql-connector.version>
         <jjwt.version>0.9.1</jjwt.version>
+        <okhttp.version>4.9.3</okhttp.version>
     </properties>
 
     <dependencyManagement>
@@ -34,6 +35,19 @@
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- OkHttp 核心依赖 -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${okhttp.version}</version>
+            </dependency>
+            <!-- OkHttp SSE 支持 -->
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp-sse</artifactId>
+                <version>${okhttp.version}</version>
             </dependency>
 
             <!-- JWT Token 解析 -->
