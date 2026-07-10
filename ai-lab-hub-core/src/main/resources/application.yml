@@ -10,7 +10,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/ai_lab_hub?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: ${MYSQL_PASSWORD:liuaobo} # 支持环境变量注入，本地开发密码默认为 liuaobo
+    password: ${MYSQL_PASSWORD:Lab3.14} # 支持环境变量注入，本地开发密码默认为 Lab3.14
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5
