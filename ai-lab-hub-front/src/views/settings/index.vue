@@ -85,6 +85,59 @@
       </div>
     </form>
 
+    <div class="settings-divider"></div>
+
+    <!-- 管理员安全密码修改卡片 -->
+    <div class="form-section password-section">
+      <h4 class="section-title">
+        <Lock class="title-icon" />
+        <span>管理员安全密码修改</span>
+      </h4>
+      
+      <form @submit.prevent="changePassword" class="password-form">
+        <div class="form-group">
+          <label for="oldPassword">当前安全密码</label>
+          <input 
+            id="oldPassword" 
+            type="password" 
+            v-model="pwdForm.oldPassword" 
+            placeholder="请输入当前正在使用的安全密码"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="newPassword">新安全密码</label>
+          <input 
+            id="newPassword" 
+            type="password" 
+            v-model="pwdForm.newPassword" 
+            placeholder="请输入长度不小于 6 位的新安全密码"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="confirmPassword">确认新安全密码</label>
+          <input 
+            id="confirmPassword" 
+            type="password" 
+            v-model="pwdForm.confirmPassword" 
+            placeholder="请再次输入新安全密码以确认"
+            required
+          />
+        </div>
+
+        <div class="settings-actions">
+          <button type="submit" class="btn-primary save-btn" :disabled="pwdSaving">
+            <Key v-if="!pwdSaving" class="btn-icon" />
+            <Loader2 v-else class="btn-icon spinning" />
+            <span>{{ pwdSaving ? '正在修改中...' : '确认修改安全密码' }}</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
     <!-- 局部 Toast 提示 -->
     <transition name="fade">
       <div v-if="savedTip" class="save-success-toast glass-panel">
@@ -101,7 +154,9 @@ import {
   Cpu, 
   ShieldAlert, 
   Save, 
-  Loader2 
+  Loader2,
+  Lock,
+  Key
 } from 'lucide-vue-next';
 
 const saving = ref(false);
@@ -111,6 +166,14 @@ const settings = reactive({
   globalApiKey: '',
   globalEndpoint: '',
   globalModel: 'claude-3-5-sonnet'
+});
+
+// 密码表单与状态
+const pwdSaving = ref(false);
+const pwdForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
 });
 
 // 初始化时从本地加载模拟数据
@@ -135,6 +198,49 @@ const saveSettings = () => {
       savedTip.value = false;
     }, 2500);
   }, 1000);
+};
+
+// 提交密码修改请求
+const changePassword = async () => {
+  if (pwdForm.newPassword.length < 6) {
+    alert('新密码长度不能少于 6 位');
+    return;
+  }
+  if (pwdForm.newPassword !== pwdForm.confirmPassword) {
+    alert('两次输入的新密码不一致，请重新核对');
+    return;
+  }
+
+  pwdSaving.value = true;
+  try {
+    const response = await fetch('/ai-lab-hub-api/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')
+      },
+      body: JSON.stringify({
+        oldPassword: pwdForm.oldPassword,
+        newPassword: pwdForm.newPassword
+      })
+    });
+
+    const result = await response.json();
+    if (result.code === 200) {
+      alert('安全密码修改成功！请用新密码重新登录。');
+      // 修改成功后清除登录态，迫使重新登录以验证新密码
+      localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('token');
+      window.location.reload();
+    } else {
+      alert(result.message || '原安全密码校验失败');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('网络异常，无法连接后端底座服务');
+  } finally {
+    pwdSaving.value = false;
+  }
 };
 </script>
 
@@ -328,6 +434,13 @@ const saveSettings = () => {
   font-size: 14px;
   box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.4);
   z-index: 2000;
+}
+
+.settings-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-color), transparent);
+  margin: 20px 0;
+  width: 100%;
 }
 
 .fade-enter-active,
