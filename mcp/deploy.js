@@ -168,7 +168,7 @@ function runRemoteDeployCommands() {
 
         echo "=== 3. 挂载后台拉起新的 Java 进程 (端口 8081) ==="
         cd ${remoteBaseDir}
-        nohup java -jar ai-lab-hub-bootstrap-1.0.0.jar --server.port=8081 > output.log 2>&1 &
+        nohup java -jar ai-lab-hub-bootstrap-1.0.0.jar --server.port=8081 --spring.datasource.password=Lab3.14 > output.log 2>&1 &
 
         echo "进程拉起成功，等待 5 秒校验状态..."
         sleep 5
