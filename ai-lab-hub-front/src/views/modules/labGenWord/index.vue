@@ -2,25 +2,39 @@
   <div class="tool-page">
     <!-- 返回头部 -->
     <div class="page-header">
-      <router-link to="/" class="back-link">
-        <ArrowLeft class="back-icon" />
-        <span>返回工具箱列表</span>
-      </router-link>
+      <div class="header-top-row">
+        <router-link to="/" class="back-link">
+          <ArrowLeft class="back-icon" />
+          <span>返回工具箱列表</span>
+        </router-link>
+        
+        <!-- 核心：界面方案热切换控制器 -->
+        <div class="layout-switcher">
+          <span class="switcher-label">💡 界面演示切换器：</span>
+          <a-radio-group v-model:value="currentLayout" button-style="solid" size="small">
+            <a-radio-button value="A">方案 A：左右 Bento 看板</a-radio-button>
+            <a-radio-button value="B">方案 B：分步步骤向导</a-radio-button>
+          </a-radio-group>
+        </div>
+      </div>
+      
       <div class="page-title">
         <h2>Word 自动生成工作流</h2>
         <span class="subtitle">针对单一接口设计说明场景，一键解析代码/Swagger并物理填充至指定规范Word模板</span>
       </div>
     </div>
 
-    <!-- 方案 A：双卡片 Bento 分栏看板布局 -->
-    <div class="bento-layout">
+    <!-- ================================================================= -->
+    <!-- 渲染 方案 A：双卡片 Bento 分栏看板布局 -->
+    <!-- ================================================================= -->
+    <div v-if="currentLayout === 'A'" class="bento-layout">
       <!-- 左栏：模板与资料输入 -->
       <div class="left-panel">
         <a-card :bordered="false" class="panel-card input-card">
           <template #title>
             <div class="card-title-box">
               <FileTextOutlined class="title-icon" />
-              <span>1. 录入配置与原始资料</span>
+              <span>1. 录入配置与原始资料 (方案A)</span>
             </div>
           </template>
 
@@ -81,7 +95,7 @@
           <template #title>
             <div class="card-title-box">
               <SlidersOutlined class="title-icon" />
-              <span>2. 字段校对与智能补全</span>
+              <span>2. 字段校对与智能补全 (方案A)</span>
             </div>
           </template>
           
@@ -242,6 +256,138 @@
         </a-card>
       </div>
     </div>
+
+    <!-- ================================================================= -->
+    <!-- 渲染 方案 B：线性步骤引导向导布局 -->
+    <!-- ================================================================= -->
+    <div v-if="currentLayout === 'B'" class="step-layout">
+      <!-- 步骤指示条 -->
+      <a-card :bordered="false" class="panel-card step-nav-card">
+        <a-steps :current="currentStep">
+          <a-step title="配置数据与模板" description="黏贴接口代码或上传自定义Word模板" />
+          <a-step title="智能解析与微调" description="大纲审核及缺失字段智能脑补" />
+          <a-step title="排版生成与物理导出" description="克隆表格样式并写入物理文档" />
+        </a-steps>
+      </a-card>
+
+      <!-- 步骤一：输入页 -->
+      <div v-if="currentStep === 0" class="step-content">
+        <a-card :bordered="false" class="panel-card content-card animate-fade">
+          <a-form layout="vertical">
+            <div class="two-column-row">
+              <a-form-item label="模板设置" class="flex-1">
+                <a-radio-group v-model:value="config.templateType" class="full-width-radio">
+                  <a-radio-button value="nannan">河北南网接口文档格式 (默认内置)</a-radio-button>
+                  <a-radio-button value="custom">上传本地 Docx 自定义模板</a-radio-button>
+                </a-radio-group>
+              </a-form-item>
+            </div>
+
+            <!-- 拖拽上传区 -->
+            <div class="drag-upload-box margin-top-md">
+              <a-upload-dragger
+                name="file"
+                :multiple="false"
+                action=""
+                :beforeUpload="handleTemplateUpload"
+              >
+                <p class="ant-upload-drag-icon"><InboxOutlined /></p>
+                <p class="ant-upload-text">请将原始接口代码 (.java)、Swagger JSON 或者是自定义模板拖拽到这里</p>
+                <p class="ant-upload-hint">支持多文件识别合并，AI 将为您智能提取字段</p>
+              </a-upload-dragger>
+            </div>
+
+            <a-form-item label="或者直接贴入原始资料内容" class="margin-top-md">
+              <a-textarea v-model:value="config.material" :rows="10" placeholder="贴入接口代码..." class="code-textarea" />
+            </a-form-item>
+
+            <div class="step-actions">
+              <a-button type="primary" size="large" @click="goToStepOne" class="step-next-btn">
+                <span>智能抽取接口并前往下一步 ➔</span>
+              </a-button>
+            </div>
+          </a-form>
+        </a-card>
+      </div>
+
+      <!-- 步骤二：校对微调页 -->
+      <div v-if="currentStep === 1" class="step-content">
+        <a-card :bordered="false" class="panel-card content-card animate-fade">
+          <div class="step-info-bar">
+            <span>🔍 接口列表解析完成，您可在此对参数说明进行在线审计：</span>
+            <a-button type="primary" @click="oneClickCompleteAll" class="magic-btn-glow">
+              🪄 一键 AI 脑补全部缺失字段说明
+            </a-button>
+          </div>
+
+          <!-- 横向卡片展示解析的接口列表 -->
+          <div class="step-api-list">
+            <a-card v-for="(api, idx) in apiList" :key="idx" class="api-item-card" size="small">
+              <template #title>
+                <span :class="['method-tag', api.method.toLowerCase()]">{{ api.method }}</span>
+                <span class="api-title-text">{{ api.name }} ({{ api.url }})</span>
+              </template>
+
+              <!-- 内嵌表格微调 -->
+              <a-table :dataSource="api.requestParams" :columns="paramColumns" size="small" :pagination="false" bordered>
+                <template #bodyCell="{ column, record, index }">
+                  <template v-if="column.key === 'name'">
+                    <a-input v-model:value="record.name" size="small" />
+                  </template>
+                  <template v-if="column.key === 'required'">
+                    <a-select v-model:value="record.required" size="small">
+                      <a-select-option value="是">是</a-select-option>
+                      <a-select-option value="否">否</a-select-option>
+                    </a-select>
+                  </template>
+                  <template v-if="column.key === 'type'">
+                    <a-input v-model:value="record.type" size="small" />
+                  </template>
+                  <template v-if="column.key === 'description'">
+                    <a-input v-model:value="record.description" size="small" />
+                  </template>
+                  <template v-if="column.key === 'action'">
+                    <a-button type="link" danger size="small" @click="deleteParam(api.requestParams, index)">删除</a-button>
+                  </template>
+                </template>
+              </a-table>
+            </a-card>
+          </div>
+
+          <div class="step-actions split-row margin-top-md">
+            <a-button size="large" @click="currentStep = 0">上一步</a-button>
+            <a-button type="primary" size="large" @click="goToStepTwo" class="step-next-btn">下一步，排版并导出</a-button>
+          </div>
+        </a-card>
+      </div>
+
+      <!-- 步骤三：排版导出 -->
+      <div v-if="currentStep === 2" class="step-content">
+        <a-card :bordered="false" class="panel-card content-card animate-fade centered-content">
+          <div v-if="exporting" class="loading-state">
+            <a-progress type="circle" :percent="exportPercent" :stroke-color="{ '0%': '#10b881', '100%': '#8b5cf6' }" />
+            <h4 class="margin-top-md">大纲与河北南网Word模板插值排版中...</h4>
+            <p class="tip">正在应用模板的淡青色表格表头和细线边框样式...</p>
+          </div>
+
+          <div v-else class="success-state">
+            <div class="word-icon-glow">
+              <FileTextOutlined class="big-word-icon" />
+            </div>
+            <h3>文档渲染打包成功！</h3>
+            <p class="subtitle">文件名：河北南网火电机组涉网性能评估分析系统接口文档_Generated.docx</p>
+
+            <div class="success-actions margin-top-md">
+              <a-button type="primary" size="large" @click="downloadMockFile" class="download-btn">
+                <template #icon><DownloadOutlined /></template>
+                <span>立即物理下载生成的 Word 报告</span>
+              </a-button>
+              <a-button size="large" @click="restartWorkflow" class="margin-left-sm">重新生成</a-button>
+            </div>
+          </div>
+        </a-card>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -259,6 +405,10 @@ import {
 } from '@ant-design/icons-vue';
 import { message } from 'ant-design-vue';
 
+// 视图层配置
+const currentLayout = ref('A'); // 可选 A (左右卡片) 或 B (步骤引导)
+const currentStep = ref(0);     // 步骤导向值
+
 // 配置表单
 const config = reactive({
   templateType: 'nannan',
@@ -268,6 +418,7 @@ const config = reactive({
 // 解析与导出状态
 const parsing = ref(false);
 const exporting = ref(false);
+const exportPercent = ref(0);
 const activeApiIndex = ref(0);
 
 // 解析结果接口列表
@@ -295,7 +446,7 @@ const handleTemplateUpload = (file) => {
   return false; // 阻断自动上传，保存在本地
 };
 
-// 1. 触发大模型提取数据
+// 触发大模型提取数据
 const startParsing = () => {
   if (!config.material.trim()) {
     message.warning('请先在左侧输入框贴入原始接口代码或资料！');
@@ -305,51 +456,14 @@ const startParsing = () => {
   parsing.value = true;
   apiList.value = [];
 
-  // 模拟大模型提取响应
   setTimeout(() => {
     parsing.value = false;
     message.success('AI 智能分析大纲抽取完成！已自动为您生成结构化字段。');
     
     // Mock 结构化抽取后的数据
-    apiList.value = [
-      {
-        name: '首页大屏-容量分类',
-        url: '/index/bigScreen/capacityCategory',
-        method: 'GET',
-        description: '按额定容量分档统计已启用且关联场站的机组数量',
-        requestParams: [
-          { name: 'status', required: '否', type: 'Int', description: '场站状态过滤 (1:启用, 0:停用)' }
-        ],
-        requestExample: '{\n  "status": 1\n}',
-        responseExample: '{\n  "status": 200,\n  "message": "操作成功",\n  "data": [\n    { "type": "1000MW", "count": 12 },\n    { "type": "600MW", "count": 28 }\n  ]\n}',
-        responseParams: [
-          { name: 'status', type: 'Int', description: '响应代码 (200:成功)' },
-          { name: 'message', type: 'String', description: '响应提示信息' },
-          { name: 'data', type: 'List', description: '容量分档统计列表数据' }
-        ],
-        completing: false
-      },
-      {
-        name: '机组涉网性能指标上报',
-        url: '/performance/evaluate/submit',
-        method: 'POST',
-        description: '用于火力发电机组一次调频、AGC性能、励磁系统参数等涉网指标的数据申报',
-        requestParams: [
-          { name: 'unitId', required: '是', type: 'Long', description: '机组物理 ID' },
-          { name: 'evaluateDate', required: '是', type: 'String', description: '评估周期时间 (yyyy-MM)' },
-          { name: 'agcScore', required: '否', type: 'Float', description: 'AGC 调频综合评分' }
-        ],
-        requestExample: '{\n  "unitId": 9931,\n  "evaluateDate": "2025-02",\n  "agcScore": 94.5\n}',
-        responseExample: '{\n  "status": 200,\n  "message": "申报上报成功"\n}',
-        responseParams: [
-          { name: 'status', type: 'Int', description: '操作状态' },
-          { name: 'message', type: 'String', description: '处理回执信息' }
-        ],
-        completing: false
-      }
-    ];
+    apiList.value = getMockApis();
     activeApiIndex.value = 0;
-  }, 1500);
+  }, 1200);
 };
 
 // 字段增加删除
@@ -373,7 +487,6 @@ const autoCompleteApi = (api) => {
   api.completing = true;
   setTimeout(() => {
     api.completing = false;
-    // 补全所有缺失的说明，并丰富 JSON
     api.requestParams.forEach(p => {
       if (!p.description) p.description = `AI自动生成的[${p.name}]属性业务含义说明`;
     });
@@ -381,10 +494,59 @@ const autoCompleteApi = (api) => {
       if (!p.description) p.description = `AI根据返回结构预测 of [${p.name}]字段说明`;
     });
     message.success(`[${api.name}] 缺漏字段说明及示例已由 AI 成功补齐润色！`);
-  }, 1200);
+  }, 1000);
 };
 
-// 2. 导出 Word 文档
+// 方案 B：分步跳转控制
+const goToStepOne = () => {
+  if (!config.material.trim()) {
+    message.warning('请先输入接口代码或粘贴 Swagger 资料！');
+    return;
+  }
+  message.loading('AI 智能解析大纲中...', 1);
+  apiList.value = getMockApis();
+  setTimeout(() => {
+    currentStep.value = 1;
+  }, 1000);
+};
+
+const goToStepTwo = () => {
+  currentStep.value = 2;
+  exporting.value = true;
+  exportPercent.value = 0;
+  
+  // 模拟进度条增长
+  const timer = setInterval(() => {
+    exportPercent.value += 20;
+    if (exportPercent.value >= 100) {
+      clearInterval(timer);
+      exporting.value = false;
+      message.success('物理模板生成成功！已经保存到本地文件管理器。');
+    }
+  }, 400);
+};
+
+// 方案 B：脑补全部
+const oneClickCompleteAll = () => {
+  message.loading('AI 正在全量审查参数并自动脑补翻译解释...', 1);
+  setTimeout(() => {
+    apiList.value.forEach(api => {
+      api.requestParams.forEach(p => {
+        if (!p.description) p.description = `AI自动脑补的[${p.name}]字段业务含义说明`;
+      });
+    });
+    message.success('已自动补齐所有接口的缺失参数含义！');
+  }, 1000);
+};
+
+// 重新开始
+const restartWorkflow = () => {
+  currentStep.value = 0;
+  config.material = '';
+  apiList.value = [];
+};
+
+// 导出 Word 文档 (方案 A)
 const exportToWord = () => {
   exporting.value = true;
   message.loading({ content: '正在读取河北南网火电接口模板样式...', key: 'export' });
@@ -395,15 +557,58 @@ const exportToWord = () => {
     setTimeout(() => {
       exporting.value = false;
       message.success({ content: '河北南网火电机组涉网性能接口说明文档生成成功！文件已存入磁盘。', key: 'export', duration: 3 });
-      
-      // 弹出模拟下载提示
-      const confirmDownload = confirm('文档已物理生成完毕，是否立即下载？\n文件名：河北南网火电机组涉网性能评估分析系统接口文档_Generated.docx');
-      if (confirmDownload) {
-        message.info('模拟开始下载 docx 报告中...');
-      }
+      downloadMockFile();
     }, 1500);
   }, 1200);
 };
+
+// 物理下载动作
+const downloadMockFile = () => {
+  const confirmDownload = confirm('文档已物理生成完毕，是否立即下载？\n文件名：河北南网火电机组涉网性能评估分析系统接口文档_Generated.docx');
+  if (confirmDownload) {
+    message.info('模拟开始下载 docx 报告中...');
+  }
+};
+
+function getMockApis() {
+  return [
+    {
+      name: '首页大屏-容量分类',
+      url: '/index/bigScreen/capacityCategory',
+      method: 'GET',
+      description: '按额定容量分档统计已启用且关联场站的机组数量',
+      requestParams: [
+        { name: 'status', required: '否', type: 'Int', description: '场站状态过滤 (1:启用, 0:停用)' }
+      ],
+      requestExample: '{\n  "status": 1\n}',
+      responseExample: '{\n  "status": 200,\n  "message": "操作成功",\n  "data": [\n    { "type": "1000MW", "count": 12 },\n    { "type": "600MW", "count": 28 }\n  ]\n}',
+      responseParams: [
+        { name: 'status', type: 'Int', description: '响应代码 (200:成功)' },
+        { name: 'message', type: 'String', description: '响应提示信息' },
+        { name: 'data', type: 'List', description: '容量分档统计列表数据' }
+      ],
+      completing: false
+    },
+    {
+      name: '机组涉网性能指标上报',
+      url: '/performance/evaluate/submit',
+      method: 'POST',
+      description: '用于火力发电机组一次调频、AGC性能、励磁系统参数等涉网指标的数据申报',
+      requestParams: [
+        { name: 'unitId', required: '是', type: 'Long', description: '机组物理 ID' },
+        { name: 'evaluateDate', required: '是', type: 'String', description: '评估周期时间 (yyyy-MM)' },
+        { name: 'agcScore', required: '否', type: 'Float', description: '' } // 刻意留空测试 AI 脑补
+      ],
+      requestExample: '{\n  "unitId": 9931,\n  "evaluateDate": "2025-02",\n  "agcScore": 94.5\n}',
+      responseExample: '{\n  "status": 200,\n  "message": "申报上报成功"\n}',
+      responseParams: [
+        { name: 'status', type: 'Int', description: '操作状态' },
+        { name: 'message', type: 'String', description: '处理回执信息' }
+      ],
+      completing: false
+    }
+  ];
+}
 </script>
 
 <style scoped>
@@ -419,6 +624,12 @@ const exportToWord = () => {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 24px;
+}
+
+.header-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .back-link {
@@ -440,11 +651,28 @@ const exportToWord = () => {
   height: 14px;
 }
 
+/* 演示热切换器样式 */
+.layout-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.switcher-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-light);
+}
+
 .page-title h2 {
   font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0;
+  margin: 8px 0 0 0;
 }
 
 .subtitle {
@@ -727,5 +955,141 @@ const exportToWord = () => {
 
 .export-btn:hover {
   box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+/* ================================================================= */
+/* 方案 B：分步步骤向导样式 */
+/* ================================================================= */
+.step-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.step-nav-card {
+  padding: 12px;
+}
+
+.step-content {
+  margin-top: 10px;
+}
+
+.content-card {
+  min-height: 400px;
+  padding: 24px;
+}
+
+.drag-upload-box {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.step-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 20px;
+}
+
+.step-actions.split-row {
+  justify-content: space-between;
+}
+
+.step-next-btn {
+  height: 48px;
+  padding: 0 32px;
+  background: var(--primary-gradient);
+  border: none;
+  box-shadow: 0 4px 15px var(--primary-glow);
+  font-weight: 700;
+}
+
+.step-info-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.magic-btn-glow {
+  background: var(--primary-gradient) !important;
+  border: none !important;
+  box-shadow: 0 4px 12px var(--primary-glow) !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
+.step-api-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.api-item-card {
+  background: rgba(255, 255, 255, 0.01) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.api-title-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-left: 8px;
+}
+
+/* 步骤三：物理导出居中样式 */
+.centered-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 0;
+}
+
+.loading-state, .success-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.word-icon-glow {
+  width: 80px;
+  height: 80px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 2px solid rgba(16, 185, 129, 0.4);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+  margin-bottom: 12px;
+}
+
+.big-word-icon {
+  font-size: 38px;
+  color: #10b981;
+}
+
+.margin-left-sm {
+  margin-left: 12px;
+}
+
+/* 动效 */
+.animate-fade {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
