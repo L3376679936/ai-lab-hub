@@ -1,572 +1,731 @@
 <template>
   <div class="tool-page">
-    <router-link to="/" class="back-link">
-      <ArrowLeft class="back-icon" />
-      <span>返回工具箱列表</span>
-    </router-link>
+    <!-- 返回头部 -->
+    <div class="page-header">
+      <router-link to="/" class="back-link">
+        <ArrowLeft class="back-icon" />
+        <span>返回工具箱列表</span>
+      </router-link>
+      <div class="page-title">
+        <h2>Word 自动生成工作流</h2>
+        <span class="subtitle">针对单一接口设计说明场景，一键解析代码/Swagger并物理填充至指定规范Word模板</span>
+      </div>
+    </div>
 
-    <div class="tool-layout">
-      <!-- 左侧输入表单 -->
-      <section class="form-section glass-panel">
-        <div class="section-header">
-          <FileText class="header-icon" />
-          <h3>文档生成配置</h3>
-        </div>
+    <!-- 方案 A：双卡片 Bento 分栏看板布局 -->
+    <div class="bento-layout">
+      <!-- 左栏：模板与资料输入 -->
+      <div class="left-panel">
+        <a-card :bordered="false" class="panel-card input-card">
+          <template #title>
+            <div class="card-title-box">
+              <FileTextOutlined class="title-icon" />
+              <span>1. 录入配置与原始资料</span>
+            </div>
+          </template>
 
-        <form @submit.prevent="startMockGeneration" class="tool-form">
-          <div class="form-group">
-            <label for="docTitle">报告/文档标题</label>
-            <input 
-              id="docTitle" 
-              type="text" 
-              v-model="config.title" 
-              placeholder="例如：AI-Lab-Hub 项目建设可行性报告"
-              required
-              :disabled="running"
-            />
-          </div>
+          <a-form layout="vertical">
+            <!-- 模板选择 -->
+            <a-form-item label="文档格式模板选择">
+              <a-radio-group v-model:value="config.templateType" class="full-width-radio">
+                <a-radio-button value="nannan">河北南网接口文档格式 (内置默认)</a-radio-button>
+                <a-radio-button value="custom">自定义上传模板 (.docx)</a-radio-button>
+              </a-radio-group>
+            </a-form-item>
 
-          <div class="form-group">
-            <label for="docOutline">主要段落大纲 / 提示词要求</label>
-            <textarea 
-              id="docOutline" 
-              v-model="config.outline" 
-              rows="6"
-              placeholder="请输入您希望文档包含的核心内容或大纲。&#10;例如：&#10;1. 项目背景与痛点分析&#10;2. 前后端技术栈方案抉择&#10;3. AI网关与连接池设计细节..."
-              required
-              :disabled="running"
-            ></textarea>
-          </div>
+            <!-- 自定义模板上传区 -->
+            <div v-if="config.templateType === 'custom'" class="upload-container">
+              <a-upload-dragger
+                name="file"
+                :multiple="false"
+                action=""
+                :beforeUpload="handleTemplateUpload"
+              >
+                <p class="ant-upload-drag-icon">
+                  <InboxOutlined />
+                </p>
+                <p class="ant-upload-text">将您的 .docx 模板文件拖拽到此处，或点击浏览上传</p>
+                <p class="ant-upload-hint">系统将自动分析并匹配模板中的动态替换标签</p>
+              </a-upload-dragger>
+            </div>
 
-          <!-- 折叠局部 AI 配置区，突出优先级概念 -->
-          <div class="config-accordion">
-            <button 
-              type="button" 
-              @click="showLocalAiConfig = !showLocalAiConfig" 
-              class="accordion-trigger"
+            <!-- 数据源输入 -->
+            <a-form-item label="原始资料/数据源录入" class="margin-top-md">
+              <a-textarea
+                v-model:value="config.material"
+                :rows="12"
+                placeholder="在此黏贴您的零散资料。支持：&#10;1. Spring Boot Controller Java代码&#10;2. Swagger / OpenAPI JSON/YAML&#10;3. 原始 Markdown 接口说明或表格"
+                class="code-textarea"
+              />
+            </a-form-item>
+
+            <!-- 一键解析动作 -->
+            <a-button 
+              type="primary" 
+              size="large" 
+              block 
+              :loading="parsing" 
+              @click="startParsing"
+              class="parse-btn"
             >
-              <div class="trigger-label">
-                <Cpu class="trigger-icon" />
-                <span>工具级独立 AI 配置 (覆盖优先级高)</span>
-              </div>
-              <ChevronDown :class="['arrow-icon', { rotated: showLocalAiConfig }]" />
-            </button>
-            
-            <transition name="slide-fade">
-              <div v-show="showLocalAiConfig" class="accordion-content">
-                <div class="form-group">
-                  <label for="apiKey">大模型 API Key</label>
-                  <input 
-                    id="apiKey" 
-                    type="password" 
-                    v-model="config.apiKey" 
-                    placeholder="若不填，默认使用底座全局 API Key"
-                    :disabled="running"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="endpoint">请求代理端点 (Endpoint)</label>
-                  <input 
-                    id="endpoint" 
-                    type="text" 
-                    v-model="config.endpoint" 
-                    placeholder="例如：https://api.anthropic.com"
-                    :disabled="running"
-                  />
-                </div>
-                <div class="form-group">
-                  <label for="model">指定模型版本 (Model)</label>
-                  <select id="model" v-model="config.model" :disabled="running">
-                    <option value="">跟随底座全局默认模型</option>
-                    <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="deepseek-coder">DeepSeek Coder</option>
-                  </select>
-                </div>
-              </div>
-            </transition>
+              <template #icon><ThunderboltOutlined /></template>
+              <span>{{ parsing ? '大模型正在智能提取结构中...' : '智能提取接口数据' }}</span>
+            </a-button>
+          </a-form>
+        </a-card>
+      </div>
+
+      <!-- 右栏：解析字段可视化微调 -->
+      <div class="right-panel">
+        <a-card :bordered="false" class="panel-card result-card">
+          <template #title>
+            <div class="card-title-box">
+              <SlidersOutlined class="title-icon" />
+              <span>2. 字段校对与智能补全</span>
+            </div>
+          </template>
+          
+          <!-- 未解析时的空状态 -->
+          <div v-if="apiList.length === 0" class="empty-holder">
+            <a-empty description="等待提取左侧原始资料...">
+              <template #image>
+                <img src="https://gw.alipayobjects.com/zos/antfincdn/ZHrcdLPrvN/empty.svg" alt="empty" />
+              </template>
+            </a-empty>
           </div>
 
-          <div class="form-group">
-            <label for="themeStyle">Word 渲染模板主题</label>
-            <select id="themeStyle" v-model="config.theme" :disabled="running">
-              <option value="tech">科技冷青 (Tech Cyan)</option>
-              <option value="business">商务深蓝 (Business Navy)</option>
-              <option value="minimalist">极简灰白 (Minimalist Light)</option>
-            </select>
+          <!-- 解析出接口后的大纲编辑区 -->
+          <div v-else class="api-editor-area">
+            <div class="helper-bar">
+              <span class="badge">已成功提取 {{ apiList.length }} 个接口大纲</span>
+              <span class="tip">温馨提示：您可直接在下方修改任一数据，双击表格单元格即可直接编辑参数。</span>
+            </div>
+
+            <a-collapse v-model:activeKey="activeApiIndex" accordion class="api-collapse">
+              <a-collapse-panel v-for="(api, idx) in apiList" :key="idx">
+                <template #header>
+                  <div class="panel-header-title">
+                    <span :class="['method-tag', api.method.toLowerCase()]">{{ api.method }}</span>
+                    <strong class="api-name-text">{{ api.name }}</strong>
+                    <span class="api-url-text">{{ api.url }}</span>
+                  </div>
+                </template>
+
+                <a-form layout="vertical" class="inner-form">
+                  <div class="two-column-row">
+                    <a-form-item label="接口中文名称" class="flex-1">
+                      <a-input v-model:value="api.name" />
+                    </a-form-item>
+                    <a-form-item label="请求 URL" class="flex-1">
+                      <a-input v-model:value="api.url" />
+                    </a-form-item>
+                  </div>
+
+                  <a-form-item label="接口描述说明">
+                    <a-textarea v-model:value="api.description" :rows="2" />
+                  </a-form-item>
+
+                  <!-- 请求参数表 -->
+                  <div class="table-section">
+                    <div class="table-title">
+                      <span>请求参数说明 (Request Params)</span>
+                      <a-button type="link" size="small" @click="addParam(api.requestParams)">
+                        + 添加参数
+                      </a-button>
+                    </div>
+                    <a-table 
+                      :dataSource="api.requestParams" 
+                      :columns="paramColumns" 
+                      size="small" 
+                      :pagination="false"
+                      bordered
+                    >
+                      <template #bodyCell="{ column, record, index }">
+                        <template v-if="column.key === 'name'">
+                          <a-input v-model:value="record.name" size="small" />
+                        </template>
+                        <template v-if="column.key === 'required'">
+                          <a-select v-model:value="record.required" size="small" class="select-required">
+                            <a-select-option value="是">是</a-select-option>
+                            <a-select-option value="否">否</a-select-option>
+                          </a-select>
+                        </template>
+                        <template v-if="column.key === 'type'">
+                          <a-input v-model:value="record.type" size="small" />
+                        </template>
+                        <template v-if="column.key === 'description'">
+                          <a-input v-model:value="record.description" size="small" />
+                        </template>
+                        <template v-if="column.key === 'action'">
+                          <a-button type="link" danger size="small" @click="deleteParam(api.requestParams, index)">
+                            删除
+                          </a-button>
+                        </template>
+                      </template>
+                    </a-table>
+                  </div>
+
+                  <!-- 返回参数表 -->
+                  <div class="table-section margin-top-md">
+                    <div class="table-title">
+                      <span>返回参数说明 (Response Params)</span>
+                      <a-button type="link" size="small" @click="addParam(api.responseParams)">
+                        + 添加参数
+                      </a-button>
+                    </div>
+                    <a-table 
+                      :dataSource="api.responseParams" 
+                      :columns="responseColumns" 
+                      size="small" 
+                      :pagination="false"
+                      bordered
+                    >
+                      <template #bodyCell="{ column, record, index }">
+                        <template v-if="column.key === 'name'">
+                          <a-input v-model:value="record.name" size="small" />
+                        </template>
+                        <template v-if="column.key === 'type'">
+                          <a-input v-model:value="record.type" size="small" />
+                        </template>
+                        <template v-if="column.key === 'description'">
+                          <a-input v-model:value="record.description" size="small" />
+                        </template>
+                        <template v-if="column.key === 'action'">
+                          <a-button type="link" danger size="small" @click="deleteParam(api.responseParams, index)">
+                            删除
+                          </a-button>
+                        </template>
+                      </template>
+                    </a-table>
+                  </div>
+
+                  <!-- 示例卡片 -->
+                  <div class="two-column-row margin-top-md">
+                    <a-form-item label="入参 JSON 示例" class="flex-1">
+                      <a-textarea v-model:value="api.requestExample" :rows="4" class="font-mono" />
+                    </a-form-item>
+                    <a-form-item label="返回 JSON 示例" class="flex-1">
+                      <a-textarea v-model:value="api.responseExample" :rows="4" class="font-mono" />
+                    </a-form-item>
+                  </div>
+
+                  <!-- 智能补全 -->
+                  <div class="action-bar">
+                    <a-button 
+                      type="dashed" 
+                      :loading="api.completing" 
+                      @click="autoCompleteApi(api)"
+                      class="magic-btn"
+                    >
+                      <span>🪄 一键 AI 脑补字段含义与 JSON 示例</span>
+                    </a-button>
+                  </div>
+                </a-form>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 导出阶段 -->
+            <div class="export-section">
+              <a-button 
+                type="primary" 
+                size="large" 
+                block 
+                :loading="exporting" 
+                @click="exportToWord"
+                class="export-btn"
+              >
+                <template #icon><DownloadOutlined /></template>
+                <span>一键导出为规范 Word 文档 (.docx)</span>
+              </a-button>
+            </div>
           </div>
-
-          <button type="submit" class="btn-primary start-btn" :disabled="running">
-            <Play class="btn-icon" />
-            <span>开始一键流式生成</span>
-          </button>
-        </form>
-      </section>
-
-      <!-- 右侧生成终端控制台 -->
-      <section class="console-section glass-panel">
-        <div class="section-header">
-          <Terminal class="header-icon" />
-          <h3>AI 实时流式控制台</h3>
-          <span :class="['status-badge', 'status-' + status]">
-            {{ statusText }}
-          </span>
-        </div>
-
-        <div class="console-box" ref="consoleRef">
-          <div v-for="(log, idx) in logs" :key="idx" :class="['log-line', 'log-' + log.type]">
-            <span class="log-time">[{{ log.time }}]</span>
-            <span class="log-content">{{ log.text }}</span>
-          </div>
-          <!-- 光标动效 -->
-          <div v-if="status === 'generating'" class="typing-cursor"></div>
-        </div>
-
-        <div class="console-footer">
-          <button 
-            @click="downloadMockFile" 
-            class="btn-primary download-btn" 
-            :disabled="status !== 'success'"
-          >
-            <Download class="btn-icon" />
-            <span>下载自动生成报告 (Word)</span>
-          </button>
-        </div>
-      </section>
+        </a-card>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed, nextTick } from 'vue';
+import { reactive, ref } from 'vue';
 import { 
-  ArrowLeft, 
-  FileText, 
-  Cpu, 
-  ChevronDown, 
-  Terminal, 
-  Play, 
-  Download 
+  ArrowLeft 
 } from 'lucide-vue-next';
+import { 
+  FileTextOutlined,
+  SlidersOutlined,
+  ThunderboltOutlined,
+  InboxOutlined,
+  DownloadOutlined
+} from '@ant-design/icons-vue';
+import { message } from 'ant-design-vue';
 
-// 表单与配置
-const showLocalAiConfig = ref(false);
-const running = ref(false);
-const status = ref('idle'); // idle, connecting, generating, building, success
-const consoleRef = ref(null);
-
+// 配置表单
 const config = reactive({
-  title: '',
-  outline: '',
-  apiKey: '',
-  endpoint: '',
-  model: '',
-  theme: 'tech'
+  templateType: 'nannan',
+  material: ''
 });
 
-// 控制台日志记录
-const logs = ref([
-  { time: getNowTime(), type: 'system', text: 'AI-Lab-Hub 控制台就绪。等待用户提交配置...' }
-]);
+// 解析与导出状态
+const parsing = ref(false);
+const exporting = ref(false);
+const activeApiIndex = ref(0);
 
-const statusText = computed(() => {
-  if (status.value === 'idle') return '等待运行';
-  if (status.value === 'connecting') return '大模型请求中...';
-  if (status.value === 'generating') return 'AI 流式章节生成中...';
-  if (status.value === 'building') return 'POI Word排版中...';
-  if (status.value === 'success') return '生成成功';
-  return '未就绪';
-});
+// 解析结果接口列表
+const apiList = ref([]);
 
-function getNowTime() {
-  const d = new Date();
-  return d.toTimeString().split(' ')[0];
-}
+// 字段定义
+const paramColumns = [
+  { title: '参数名称', dataIndex: 'name', key: 'name', width: '25%' },
+  { title: '是否必填', dataIndex: 'required', key: 'required', width: '20%' },
+  { title: '类型', dataIndex: 'type', key: 'type', width: '20%' },
+  { title: '字段说明', dataIndex: 'description', key: 'description', width: '25%' },
+  { title: '操作', key: 'action', width: '10%', align: 'center' }
+];
 
-// 追加日志并自动滚动到底部
-const addLog = (text, type = 'info') => {
-  logs.value.push({
-    time: getNowTime(),
-    type,
-    text
-  });
-  nextTick(() => {
-    if (consoleRef.value) {
-      consoleRef.value.scrollTop = consoleRef.value.scrollHeight;
-    }
-  });
+const responseColumns = [
+  { title: '参数名称', dataIndex: 'name', key: 'name', width: '30%' },
+  { title: '类型', dataIndex: 'type', key: 'type', width: '25%' },
+  { title: '字段说明', dataIndex: 'description', key: 'description', width: '35%' },
+  { title: '操作', key: 'action', width: '10%', align: 'center' }
+];
+
+// 自定义模板上传拦截
+const handleTemplateUpload = (file) => {
+  message.success(`本地模板 "${file.name}" 上传成功，将作为排版底标进行字段插值。`);
+  return false; // 阻断自动上传，保存在本地
 };
 
-// 预设生成的大模型文章内容（模拟 SSE 流式打字）
-const mockLlmResponse = 
-`# AI-Lab-Hub 平台建设报告
-
-## 一、 系统架构设计与多模块隔离
-AI-Lab-Hub 采用 Maven 多模块架构进行组织。底座模块封装了安全认证、AI网关、定时文件清理等共性能力。具体的小工具则以独立的 Sub-Module 进行物理隔离，这完美地解决了多个 AI 业务脚本相互缠绕和开发耦合的痛点。
-
-## 二、 统一大模型网关设计 (AiGatewayService)
-网关支持多级 Key 配置覆盖。当独立工具配置了专属 API Key 时，网关会自动加载组件级 Key，否则安全地退回到全局公共 Key，兼顾了共享便捷性与个例安全性。网关引入本地 ConcurrentHashMap 缓存池，并在配置更新时基于 Spring Event 触发失效机制。
-
-## 三、 文件生命周期安全清理 (FileCleanupTask)
-系统引入了路径 CanonicalPath 规范化验证以及 SymbolicLink 软链接检测，每天凌晨 3:00 执行过期 24 小时的临时文件物理清除，在保证服务器存储容量上限的同时，彻底规避了目录穿越误删宿主机系统文件带来的致命安全漏洞。
-
-## 四、 结论与后续演进
-目前项目已打通前后端骨架。下一步将继续完善对 MCP 客户端连接测试中心的开发，丰富本地 Skill 注解反射调用机制，以实现更具想象力的本地 AI 自动化执行。`;
-
-const fileId = ref(null);
-const eventSourceInstance = ref(null);
-
-// 触发真实的 AI 章节流式生成与 POI MCP 物理生成过程
-const startMockGeneration = () => {
-  if (running.value) return;
-  running.value = true;
-  logs.value = []; // 清空日志
-  fileId.value = null;
-  
-  status.value = 'connecting';
-  addLog('正在与大模型网关建立 SSE 连接...', 'system');
-
-  const token = localStorage.getItem('token') || '';
-  const url = `/ai-lab-hub-api/modules/labGenWord/generate?topic=${encodeURIComponent(config.title)}&outline=${encodeURIComponent(config.outline)}&token=${encodeURIComponent(token)}`;
-
-  try {
-    const es = new EventSource(url);
-    eventSourceInstance.value = es;
-
-    es.onopen = () => {
-      status.value = 'generating';
-      addLog('网关通道握手成功，大模型开始流式输出报告大纲与正文...', 'system');
-    };
-
-    es.addEventListener('text', (event) => {
-      // 实时追加流式字符 (大模型生成章节)
-      logs.value.push({
-        time: getNowTime(),
-        type: 'llm',
-        text: event.data
-      });
-      // 自动滚动
-      nextTick(() => {
-        if (consoleRef.value) {
-          consoleRef.value.scrollTop = consoleRef.value.scrollHeight;
-        }
-      });
-    });
-
-    es.addEventListener('system', (event) => {
-      // 追加系统排版及 MCP 进程的巡检日志
-      addLog(event.data, 'system');
-    });
-
-    es.addEventListener('success', (event) => {
-      // 部署落盘成功，记录 fileId 并亮起下载按钮
-      fileId.value = event.data;
-      status.value = 'success';
-      running.value = false;
-      addLog('✔ 物理 Word 文档通过 MCP 服务自动排版生成成功！', 'success');
-      addLog(`临时物理文件登记成功，文件 ID: ${event.data}，系统将于 24 小时后安全自动清理磁盘`, 'success');
-      es.close();
-    });
-
-    es.addEventListener('error', (event) => {
-      // 后端推送的错误
-      addLog('✘ 生成失败: ' + event.data, 'error');
-      status.value = 'idle';
-      running.value = false;
-      es.close();
-    });
-
-    es.onerror = (err) => {
-      addLog('✘ 连接中断或发生网络鉴权错误，请重新登录并刷新重试', 'error');
-      status.value = 'idle';
-      running.value = false;
-      es.close();
-    };
-
-  } catch (err) {
-    addLog('✘ 启动 SSE 事件源异常: ' + err.message, 'error');
-    status.value = 'idle';
-    running.value = false;
-  }
-};
-
-// 触发下载真实的生成的物理 Word 报告
-const downloadMockFile = () => {
-  if (!fileId.value) {
-    alert('未检测到可供下载的物理文件登记 ID');
+// 1. 触发大模型提取数据
+const startParsing = () => {
+  if (!config.material.trim()) {
+    message.warning('请先在左侧输入框贴入原始接口代码或资料！');
     return;
   }
-  const token = localStorage.getItem('token') || '';
-  const url = `/ai-lab-hub-api/modules/labGenWord/download?fileId=${fileId.value}&token=${encodeURIComponent(token)}`;
   
-  // 直接通过浏览器打开新标签页进行流式文件下载
-  window.open(url, '_blank');
-  addLog('物理 Word 报告下载指令发送成功，正在拉起文件导出流...', 'success');
+  parsing.value = true;
+  apiList.value = [];
+
+  // 模拟大模型提取响应
+  setTimeout(() => {
+    parsing.value = false;
+    message.success('AI 智能分析大纲抽取完成！已自动为您生成结构化字段。');
+    
+    // Mock 结构化抽取后的数据
+    apiList.value = [
+      {
+        name: '首页大屏-容量分类',
+        url: '/index/bigScreen/capacityCategory',
+        method: 'GET',
+        description: '按额定容量分档统计已启用且关联场站的机组数量',
+        requestParams: [
+          { name: 'status', required: '否', type: 'Int', description: '场站状态过滤 (1:启用, 0:停用)' }
+        ],
+        requestExample: '{\n  "status": 1\n}',
+        responseExample: '{\n  "status": 200,\n  "message": "操作成功",\n  "data": [\n    { "type": "1000MW", "count": 12 },\n    { "type": "600MW", "count": 28 }\n  ]\n}',
+        responseParams: [
+          { name: 'status', type: 'Int', description: '响应代码 (200:成功)' },
+          { name: 'message', type: 'String', description: '响应提示信息' },
+          { name: 'data', type: 'List', description: '容量分档统计列表数据' }
+        ],
+        completing: false
+      },
+      {
+        name: '机组涉网性能指标上报',
+        url: '/performance/evaluate/submit',
+        method: 'POST',
+        description: '用于火力发电机组一次调频、AGC性能、励磁系统参数等涉网指标的数据申报',
+        requestParams: [
+          { name: 'unitId', required: '是', type: 'Long', description: '机组物理 ID' },
+          { name: 'evaluateDate', required: '是', type: 'String', description: '评估周期时间 (yyyy-MM)' },
+          { name: 'agcScore', required: '否', type: 'Float', description: 'AGC 调频综合评分' }
+        ],
+        requestExample: '{\n  "unitId": 9931,\n  "evaluateDate": "2025-02",\n  "agcScore": 94.5\n}',
+        responseExample: '{\n  "status": 200,\n  "message": "申报上报成功"\n}',
+        responseParams: [
+          { name: 'status', type: 'Int', description: '操作状态' },
+          { name: 'message', type: 'String', description: '处理回执信息' }
+        ],
+        completing: false
+      }
+    ];
+    activeApiIndex.value = 0;
+  }, 1500);
+};
+
+// 字段增加删除
+const addParam = (paramsList) => {
+  paramsList.push({
+    name: '',
+    required: '否',
+    type: 'String',
+    description: ''
+  });
+  message.info('已新增一行参数槽位，请完善定义');
+};
+
+const deleteParam = (paramsList, idx) => {
+  paramsList.splice(idx, 1);
+  message.info('参数已移除');
+};
+
+// 🪄 单接口 AI 补全
+const autoCompleteApi = (api) => {
+  api.completing = true;
+  setTimeout(() => {
+    api.completing = false;
+    // 补全所有缺失的说明，并丰富 JSON
+    api.requestParams.forEach(p => {
+      if (!p.description) p.description = `AI自动生成的[${p.name}]属性业务含义说明`;
+    });
+    api.responseParams.forEach(p => {
+      if (!p.description) p.description = `AI根据返回结构预测 of [${p.name}]字段说明`;
+    });
+    message.success(`[${api.name}] 缺漏字段说明及示例已由 AI 成功补齐润色！`);
+  }, 1200);
+};
+
+// 2. 导出 Word 文档
+const exportToWord = () => {
+  exporting.value = true;
+  message.loading({ content: '正在读取河北南网火电接口模板样式...', key: 'export' });
+
+  setTimeout(() => {
+    message.loading({ content: '正在物理插值克隆表格样式并写入段落...', key: 'export', duration: 1 });
+    
+    setTimeout(() => {
+      exporting.value = false;
+      message.success({ content: '河北南网火电机组涉网性能接口说明文档生成成功！文件已存入磁盘。', key: 'export', duration: 3 });
+      
+      // 弹出模拟下载提示
+      const confirmDownload = confirm('文档已物理生成完毕，是否立即下载？\n文件名：河北南网火电机组涉网性能评估分析系统接口文档_Generated.docx');
+      if (confirmDownload) {
+        message.info('模拟开始下载 docx 报告中...');
+      }
+    }, 1500);
+  }, 1200);
 };
 </script>
 
 <style scoped>
 .tool-page {
+  padding: 24px;
+  background: var(--bg-color);
+  min-height: calc(100vh - 64px);
+  color: var(--text-primary);
+}
+
+.page-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
+  margin-bottom: 24px;
 }
 
 .back-link {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text-secondary);
-  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
   transition: color var(--transition-fast);
-  align-self: flex-start;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
 }
 
 .back-link:hover {
-  color: var(--text-primary);
-  background: var(--surface-color);
-}
-
-.back-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.tool-layout {
-  display: grid;
-  grid-template-columns: 400px 1fr;
-  gap: 20px;
-  align-items: start;
-}
-
-/* 统一卡片头部 */
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 16px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.header-icon {
-  width: 20px;
-  height: 20px;
   color: var(--primary-color);
 }
 
-.section-header h3 {
-  font-size: 16px;
+.back-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.page-title h2 {
+  font-size: 22px;
   font-weight: 700;
-  flex-grow: 1;
-}
-
-/* 左侧配置栏 */
-.form-section {
-  padding: 24px;
-  background: var(--surface-color);
-}
-
-.tool-form {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  padding-left: 2px;
-}
-
-.form-group input, 
-.form-group select, 
-.form-group textarea {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--border-color);
-  background: rgba(var(--bg-color), 0.3);
   color: var(--text-primary);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  margin: 0;
 }
 
-.form-group input:focus, 
-.form-group select:focus, 
-.form-group textarea:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--primary-glow);
-  background: var(--surface-solid);
+.subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
-/* 折叠面板 (AI配置) */
-.config-accordion {
+/* Bento 双卡片布局 */
+.bento-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.panel-card {
+  background: var(--surface-color);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
 }
 
-.accordion-trigger {
-  width: 100%;
-  padding: 12px 14px;
-  background: rgba(var(--bg-color), 0.2);
-  border: none;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  color: var(--text-secondary);
-  transition: background var(--transition-fast);
-}
-
-.accordion-trigger:hover {
-  background: rgba(var(--bg-color), 0.4);
-}
-
-.trigger-label {
+.card-title-box {
   display: flex;
   align-items: center;
   gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.title-icon {
+  color: var(--primary-color);
+  font-size: 18px;
+}
+
+.full-width-radio {
+  width: 100%;
+  display: flex;
+}
+
+.full-width-radio :deep(.ant-radio-button-wrapper) {
+  flex: 1;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.full-width-radio :deep(.ant-radio-button-wrapper-checked) {
+  background: var(--primary-gradient) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+
+.upload-container {
+  margin-top: 14px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  padding: 8px;
+}
+
+:deep(.ant-upload-drag) {
+  background: transparent !important;
+  border: 1px dashed var(--border-color) !important;
+}
+
+:deep(.ant-upload-drag:hover) {
+  border-color: var(--primary-color) !important;
+}
+
+.margin-top-md {
+  margin-top: 20px;
+}
+
+.code-textarea {
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.2);
+  border-color: var(--border-color);
+  color: #f1f1f1;
+  border-radius: var(--radius-md);
+}
+
+.code-textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-glow);
+}
+
+.parse-btn {
+  margin-top: 14px;
+  height: 48px;
+  font-weight: 700;
+  background: var(--primary-gradient);
+  border: none;
+  box-shadow: 0 4px 15px var(--primary-glow);
+}
+
+/* 右栏：字段微调区域 */
+.empty-holder {
+  padding: 100px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.helper-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.badge {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: var(--primary-light);
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.tip {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.api-collapse {
+  background: transparent !important;
+  border: none !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+:deep(.ant-collapse-item) {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+
+:deep(.ant-collapse-header) {
+  background: rgba(0, 0, 0, 0.15) !important;
+  color: var(--text-primary) !important;
+}
+
+.panel-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.method-tag {
+  font-size: 11px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.method-tag.get {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.method-tag.post {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.api-name-text {
+  font-size: 13px;
+}
+
+.api-url-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.inner-form {
+  padding: 8px 0;
+}
+
+.two-column-row {
+  display: flex;
+  gap: 16px;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.table-section {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.table-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  border-left: 2px solid var(--primary-color);
+  padding-left: 8px;
+}
+
+:deep(.ant-table) {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text-secondary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
   font-size: 12px;
   font-weight: 600;
 }
 
-.trigger-icon {
-  width: 14px;
-  height: 14px;
+:deep(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid var(--border-color) !important;
+  background: transparent !important;
 }
 
-.arrow-icon {
-  width: 14px;
-  height: 14px;
-  transition: transform var(--transition-fast);
+:deep(.ant-table-cell) {
+  padding: 6px 12px !important;
 }
 
-.arrow-icon.rotated {
-  transform: rotate(180deg);
+.select-required {
+  width: 100%;
 }
 
-.accordion-content {
-  padding: 14px;
+.font-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.action-bar {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.magic-btn {
+  background: rgba(139, 92, 246, 0.08) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  color: var(--primary-light) !important;
+}
+
+.magic-btn:hover {
+  border-color: var(--primary-color) !important;
+  background: rgba(139, 92, 246, 0.15) !important;
+}
+
+.export-section {
+  margin-top: 24px;
   border-top: 1px solid var(--border-color);
-  background: rgba(0, 0, 0, 0.05);
+  padding-top: 20px;
 }
 
-.start-btn {
-  width: 100%;
-  height: 44px;
-  justify-content: center;
-  font-size: 15px;
-}
-
-.btn-icon {
-  width: 16px;
-  height: 16px;
-}
-
-/* 右侧控制台 */
-.console-section {
-  padding: 24px;
-  background: var(--surface-color);
-  display: flex;
-  flex-direction: column;
-  height: 600px;
-}
-
-.status-badge {
-  font-size: 11px;
+.export-btn {
+  height: 52px;
   font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 20px;
-}
-
-.status-idle { background: var(--border-color); color: var(--text-muted); }
-.status-connecting { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
-.status-generating { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
-.status-building { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.status-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-
-/* 终端框 */
-.console-box {
-  flex-grow: 1;
-  background: #070913;
-  border: 1px solid #1a2035;
-  border-radius: var(--radius-md);
-  padding: 16px;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  line-height: 1.5;
-  box-shadow: inset 0 2px 8px rgba(0,0,0,0.8);
-}
-
-.log-line {
-  word-break: break-all;
-}
-
-.log-time {
-  color: #4b5563;
-  margin-right: 8px;
-}
-
-/* 控制台行颜色 */
-.log-system { color: #38bdf8; font-weight: 600; } /* 蓝 */
-.log-warning { color: #facc15; } /* 黄 */
-.log-info { color: #94a3b8; } /* 灰 */
-.log-success { color: #4ade80; font-weight: 600; } /* 绿 */
-.log-llm { color: #a78bfa; white-space: pre-wrap; } /* 紫色打字 */
-
-/* 打字光标动画 */
-.typing-cursor {
-  display: inline-block;
-  width: 8px;
-  height: 15px;
-  background: #a78bfa;
-  margin-left: 4px;
-  animation: blink 0.8s infinite;
-  align-self: flex-start;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
-}
-
-.console-footer {
-  margin-top: 16px;
-}
-
-.download-btn {
-  width: 100%;
-  height: 46px;
-  justify-content: center;
   font-size: 15px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
 }
 
-/* 折叠动画 */
-.slide-fade-enter-active,
-.slide-fade-leave-active {
-  transition: all 0.25s ease-out;
-}
-
-.slide-fade-enter-from,
-.slide-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
+.export-btn:hover {
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
 }
 </style>

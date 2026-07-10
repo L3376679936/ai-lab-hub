@@ -68,6 +68,7 @@
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { User, Lock, Eye, EyeOff, Loader2 } from 'lucide-vue-next';
+import { message } from 'ant-design-vue';
 
 const router = useRouter();
 const showPassword = ref(false);
@@ -95,14 +96,15 @@ const handleLogin = async () => {
     const result = await response.json();
     if (result.code === 200) {
       localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('token', result.data); // 保存后端生成的 JWT Token
+      localStorage.setItem('token', result.data.token); // 刚才后端返回的是含有 token 属性的对象，修改为 result.data.token 适配
+      message.success('登录成功，正在进入工作台...');
       router.push('/');
     } else {
-      alert(result.message || '账号或密码错误');
+      message.error(result.message || '账号或密码错误');
     }
   } catch (err) {
     console.error(err);
-    alert('连接后端底座服务失败，请检查服务是否运行或已被 Nginx 代理');
+    message.error('连接后端底座服务失败，请检查服务是否运行或已被 Nginx 代理');
   } finally {
     loading.value = false;
   }

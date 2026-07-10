@@ -158,6 +158,7 @@ import {
   Lock,
   Key
 } from 'lucide-vue-next';
+import { message } from 'ant-design-vue';
 
 const saving = ref(false);
 const savedTip = ref(false);
@@ -203,11 +204,11 @@ const saveSettings = () => {
 // 提交密码修改请求
 const changePassword = async () => {
   if (pwdForm.newPassword.length < 6) {
-    alert('新密码长度不能少于 6 位');
+    message.warning('新密码长度不能少于 6 位');
     return;
   }
   if (pwdForm.newPassword !== pwdForm.confirmPassword) {
-    alert('两次输入的新密码不一致，请重新核对');
+    message.warning('两次输入的新密码不一致，请重新核对');
     return;
   }
 
@@ -227,17 +228,19 @@ const changePassword = async () => {
 
     const result = await response.json();
     if (result.code === 200) {
-      alert('安全密码修改成功！请用新密码重新登录。');
+      message.success('安全密码修改成功！请用新密码重新登录。');
       // 修改成功后清除登录态，迫使重新登录以验证新密码
       localStorage.removeItem('isAuthenticated');
       localStorage.removeItem('token');
-      window.location.reload();
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } else {
-      alert(result.message || '原安全密码校验失败');
+      message.error(result.message || '原安全密码校验失败');
     }
   } catch (err) {
     console.error(err);
-    alert('网络异常，无法连接后端底座服务');
+    message.error('网络异常，无法连接后端底座服务');
   } finally {
     pwdSaving.value = false;
   }
