@@ -15,11 +15,13 @@ const connSettings = {
 const localJarPath = path.resolve(__dirname, '../ai-lab-hub-bootstrap/target/ai-lab-hub-bootstrap-1.0.0.jar');
 const localMcpScript = path.resolve(__dirname, './office-mcp.js');
 const localMcpPackage = path.resolve(__dirname, './package.json');
+const localFrontendZip = path.resolve(__dirname, './frontend.zip');
 
 const remoteBaseDir = '/opt/ai-lab-hub';
 const remoteJarPath = '/opt/ai-lab-hub/ai-lab-hub-bootstrap-1.0.0.jar';
 const remoteMcpScript = '/opt/ai-lab-hub/mcp/office-mcp.js';
 const remoteMcpPackage = '/opt/ai-lab-hub/mcp/package.json';
+const remoteFrontendZip = '/opt/ai-lab-hub/frontend.zip';
 
 const conn = new Client();
 
@@ -50,6 +52,7 @@ conn.on('ready', () => {
                     await uploadFile(sftp, localJarPath, remoteJarPath, 'Java Fat Jar 引导包');
                     await uploadFile(sftp, localMcpScript, remoteMcpScript, 'Node MCP 业务脚本');
                     await uploadFile(sftp, localMcpPackage, remoteMcpPackage, 'Node MCP package.json');
+                    await uploadFile(sftp, localFrontendZip, remoteFrontendZip, '前端静态资源压缩包');
                     
                     console.log('✔ 所有发布文件上传成功. 准备拉起远程部署逻辑...');
                     runRemoteDeployCommands();
@@ -125,6 +128,11 @@ function runRemoteDeployCommands() {
         else
             npm install --production
         fi
+
+        echo "=== 1.5. 部署并解压前端静态资源 ==="
+        mkdir -p /data/frontend
+        unzip -o ${remoteFrontendZip} -d /data/frontend
+        rm -f ${remoteFrontendZip}
 
         echo "=== 2. 查杀同端口/同名称的旧 Java 进程 ==="
         PID=$(ps -ef | grep ai-lab-hub-bootstrap | grep -v grep | awk '{print $2}')
