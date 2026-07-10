@@ -3,16 +3,15 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/lab-frontend/',
+  base: '/ai-lab-hub/',
   plugins: [vue()],
   server: {
     port: 5173,
     proxy: {
-      '/api': {
+      '/ai-lab-hub-api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
-        // 后端 context-path 是 /api，所以不需要去掉前缀
-        rewrite: (path) => path.replace(/^\/api/, '/api')
+        rewrite: (path) => path.replace(/^\/ai-lab-hub-api/, '/ai-lab-hub-api')
       }
     }
   }

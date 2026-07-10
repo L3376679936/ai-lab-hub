@@ -78,15 +78,34 @@ const form = reactive({
   password: ''
 });
 
-const handleLogin = () => {
+const handleLogin = async () => {
   loading.value = true;
-  
-  // 模拟登录网络延迟，展示高颜值 Loading 动效
-  setTimeout(() => {
+  try {
+    const response = await fetch('/ai-lab-hub-api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        username: form.username,
+        password: form.password
+      })
+    });
+    
+    const result = await response.json();
+    if (result.code === 200) {
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('token', result.data); // 保存后端生成的 JWT Token
+      router.push('/');
+    } else {
+      alert(result.message || '账号或密码错误');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('连接后端底座服务失败，请检查服务是否运行或已被 Nginx 代理');
+  } finally {
     loading.value = false;
-    localStorage.setItem('isAuthenticated', 'true');
-    router.push('/');
-  }, 1200);
+  }
 };
 </script>
 

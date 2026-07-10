@@ -129,28 +129,46 @@ function runRemoteDeployCommands() {
             npm install --production
         fi
 
-        echo "=== 1.5. 部署并解压前端静态资源 ==="
+        echo "=== 1.5. 部署并解压前端静态资源 (ai-lab-hub) ==="
         mkdir -p /data/frontend
+        # 清除旧版本目录，避免文件残留
+        rm -rf /data/frontend/ai-lab-hub
+        rm -rf /data/frontend/lab-frontend
         unzip -o ${remoteFrontendZip} -d /data/frontend
         rm -f ${remoteFrontendZip}
+        echo "✔ 前端静态资源解压至 /data/frontend/ai-lab-hub"
 
-        echo "=== 2. 查杀同端口/同名称的旧 Java 进程 ==="
+        echo "=== 1.8. 更新 Nginx 配置，注入 ai-lab-hub 专属路由 ==="
+        # 如果未添加过 ai-lab-hub 的块则追加写入（幂等，可重复部署）
+        if ! grep -q "ai-lab-hub" /etc/nginx/conf.d/lab-project.conf; then
+            # 在文件末尾的 } 之前插入新 location 块
+            sed -i 's|    access_log|    # ============ AI-Lab-Hub 项目 ============\n    # 前端静态资源\n    location /ai-lab-hub {\n        alias /data/frontend/ai-lab-hub/;\n        index index.html;\n        try_files $uri $uri/ /ai-lab-hub/index.html;\n    }\n\n    location ~* ^/ai-lab-hub/.*\\.(js|css|png|jpg|jpeg|gif|ico|svg)$ {\n        alias /data/frontend/;\n        expires 7d;\n        add_header Cache-Control "public, max-age=604800";\n    }\n\n    # 后端 API 反向代理（专属端口 8081，避免与 New API 的 3000 端口冲突）\n    location /ai-lab-hub-api/ {\n        proxy_pass http://127.0.0.1:8081/ai-lab-hub-api/;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        # SSE 流式输出关键配置\n        proxy_buffering off;\n        proxy_cache off;\n        proxy_read_timeout 3600s;\n        proxy_send_timeout 3600s;\n        proxy_http_version 1.1;\n        chunked_transfer_encoding on;\n    }\n\n    access_log|' /etc/nginx/conf.d/lab-project.conf
+            echo "✔ Nginx 配置已成功注入 ai-lab-hub 专属路由块"
+        else
+            echo "✔ Nginx 配置已包含 ai-lab-hub，无需重复注入"
+        fi
+
+        echo "=== 1.9. 校验并重载 Nginx ==="
+        nginx -t && nginx -s reload
+        echo "✔ Nginx 配置校验并热重载成功"
+
+        echo "=== 2. 查杀同名称的旧 Java 进程 ==="
         PID=$(ps -ef | grep ai-lab-hub-bootstrap | grep -v grep | awk '{print $2}')
         if [ -n "$PID" ]; then
             echo "发现旧进程 $PID，正在强行杀掉..."
             kill -9 $PID
         fi
 
-        # 防御性杀掉 3000 端口占用 (Nginx 代理此端口)
-        PORT_PID=$(lsof -t -i:3000 2>/dev/null)
+        # 防御性杀掉 8081 端口占用
+        PORT_PID=$(lsof -t -i:8081 2>/dev/null)
         if [ -n "$PORT_PID" ]; then
-            echo "发现 3000 端口占用进程 $PORT_PID，正在强制释放..."
+            echo "发现 8081 端口占用进程 $PORT_PID，正在强制释放..."
             kill -9 $PORT_PID
         fi
 
-        echo "=== 3. 挂载后台拉起新的 Java 进程 ==="
+        echo "=== 3. 挂载后台拉起新的 Java 进程 (端口 8081) ==="
         cd ${remoteBaseDir}
-        nohup java -jar ai-lab-hub-bootstrap-1.0.0.jar --server.port=3000 > output.log 2>&1 &
+        nohup java -jar ai-lab-hub-bootstrap-1.0.0.jar --server.port=8081 > output.log 2>&1 &
 
         echo "进程拉起成功，等待 5 秒校验状态..."
         sleep 5
@@ -158,7 +176,7 @@ function runRemoteDeployCommands() {
         echo "=== 4. 远程日志打印 ==="
         head -n 25 output.log
 
-        echo "=== 5. 校验 3000 端口绑定与运行进程 ==="
+        echo "=== 5. 校验 8081 端口绑定与运行进程 ==="
         ps -ef | grep ai-lab-hub-bootstrap | grep -v grep
     `;
 
