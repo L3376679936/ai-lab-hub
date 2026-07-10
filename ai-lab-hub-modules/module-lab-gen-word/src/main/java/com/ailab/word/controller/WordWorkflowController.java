@@ -14,6 +14,7 @@ import com.ailab.word.util.WordExportEngine;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.annotation.PostConstruct;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.FileInputStream;
@@ -121,7 +122,7 @@ public class WordWorkflowController {
      * 临时图片源上传 (如粘贴接口图、时序图等)
      */
     @PostMapping("/upload-image")
-    public Result<Map<String, String>> uploadImage(@RequestParam("file") MultipartFile file) {
+    public Result<Map<String, String>> uploadImage(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
         if (file.isEmpty()) {
             return Result.failed("上传图片文件不能为空！");
         }
@@ -142,9 +143,10 @@ public class WordWorkflowController {
             tempFile.setStatus(0);
             coreTempFileRepository.save(tempFile);
 
+            String contextPath = request.getContextPath(); // 动态获取运行时的 "/ai-lab-hub-api"
             Map<String, String> data = new HashMap<>();
             data.put("imageId", uuidFilename);
-            data.put("url", "/api/word/view-image/" + uuidFilename);
+            data.put("url", contextPath + "/word/view-image/" + uuidFilename);
             return Result.success(data, "接口辅助图片暂存成功！");
         } catch (Exception e) {
             log.error("上传图片异常: ", e);
