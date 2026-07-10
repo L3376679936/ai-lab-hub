@@ -39,6 +39,16 @@ const rules = [
       }
       return null;
     }
+  },
+  {
+    name: 'a-step 废弃组件使用拦截',
+    check: (content) => {
+      // 检查是否在 a-steps 内部直接嵌套了 a-step，这在 Ant Design Vue 4.x 中已被完全废弃，会导致运行时渲染直接白屏/黑屏崩溃
+      if (content.includes('<a-step ')) {
+        return '检测到遗留的 <a-step> 嵌套组件！在 Ant Design Vue 4.x 中已被废弃，请在 <a-steps> 上直接绑定 :items 属性！';
+      }
+      return null;
+    }
   }
 ];
 

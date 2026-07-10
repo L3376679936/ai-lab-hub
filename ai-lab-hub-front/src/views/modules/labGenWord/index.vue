@@ -260,11 +260,7 @@
     <div v-if="currentLayout === 'B'" class="step-layout">
       <!-- 步骤指示条 -->
       <a-card :bordered="false" class="panel-card step-nav-card">
-        <a-steps :current="currentStep">
-          <a-step title="配置数据与模板" description="黏贴接口代码或上传自定义Word模板" />
-          <a-step title="智能解析与微调" description="大纲审核及缺失字段智能脑补" />
-          <a-step title="排版生成与物理导出" description="克隆表格样式并写入物理文档" />
-        </a-steps>
+        <a-steps :current="currentStep" :items="stepItems" />
       </a-card>
 
       <!-- 步骤一：输入页 -->
@@ -405,6 +401,13 @@ import { message } from 'ant-design-vue';
 // 视图层配置
 const currentLayout = ref('A'); // 可选 A (左右卡片) 或 B (步骤引导)
 const currentStep = ref(0);     // 步骤导向值
+
+// 步骤条 items 配置，100% 适配 Ant Design Vue 4.x 官方属性规范，防止 a-step 嵌套组件渲染白屏
+const stepItems = [
+  { title: '配置数据与模板', description: '黏贴接口代码或上传自定义Word模板' },
+  { title: '智能解析与微调', description: '大纲审核及缺失字段智能脑补' },
+  { title: '排版生成与物理导出', description: '克隆表格样式并写入物理文档' }
+];
 
 // 配置表单
 const config = reactive({
